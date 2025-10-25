@@ -89,6 +89,8 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
         ine: '' as string | null,
         postal: '',
         colonia: '',
+        // user consent to fetch Banorte data via Open Banking
+        allowOpenBanking: false,
     });
 
     const [colonias, setColonias] = useState<string[]>([]);
@@ -442,6 +444,24 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
                         )}
                         {formError ? <Text style={styles.errorText}>{formError}</Text> : null}
 
+                        {/* Allow user to connect Banorte via Open Banking on the last step */}
+                        {isLastFormStep && (
+                            <View style={styles.bankSection}>
+                                <Text style={styles.bankDesc}>Conecta con Banorte (banca abierta) para importar automáticamente tus datos financieros y agilizar el proceso.</Text>
+                                <TouchableOpacity
+                                    style={[styles.bankButton, (formData as any).allowOpenBanking && styles.bankButtonConnected]}
+                                    onPress={() => setFormData(prev => ({ ...prev, allowOpenBanking: !(prev as any).allowOpenBanking }))}
+                                    activeOpacity={0.85}
+                                >
+                                    {((formData as any).allowOpenBanking) ? (
+                                        <Text style={[styles.bankButtonText, styles.bankButtonTextConnected]}>Conectado ✓</Text>
+                                    ) : (
+                                        <Text style={styles.bankButtonText}>Conectar con Banorte</Text>
+                                    )}
+                                </TouchableOpacity>
+                            </View>
+                        )}
+
                         {/* CTA directly below the input/question */}
                         <View style={onboardingStyles.ctaInline}>
                             <TouchableOpacity 
@@ -645,6 +665,37 @@ const styles = StyleSheet.create({
         marginTop: 12,
         alignItems: 'center',
         padding: 12,
+    },
+    bankSection: {
+        width: '100%',
+        maxWidth: 400,
+        alignSelf: 'center',
+        marginTop: 10,
+        marginBottom: 6,
+    },
+    bankDesc: {
+        color: GRAY,
+        fontSize: 13,
+        marginBottom: 8,
+    },
+    bankButton: {
+        backgroundColor: '#fff',
+        borderWidth: 1,
+        borderColor: LIGHT_GRAY,
+        paddingVertical: 12,
+        borderRadius: 10,
+        alignItems: 'center',
+    },
+    bankButtonConnected: {
+        backgroundColor: RED,
+        borderColor: RED,
+    },
+    bankButtonText: {
+        color: GRAY,
+        fontWeight: '700',
+    },
+    bankButtonTextConnected: {
+        color: WHITE,
     },
 });
 

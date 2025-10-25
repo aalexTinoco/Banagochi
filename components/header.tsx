@@ -55,7 +55,7 @@ const styles = StyleSheet.create({
     width: '100%',
     paddingHorizontal: 24,
     marginTop: Constants.statusBarHeight + 10,
-    marginBottom: 40,
+    marginBottom: 10,
     backgroundColor: WHITE,
   },
   headerContent: {

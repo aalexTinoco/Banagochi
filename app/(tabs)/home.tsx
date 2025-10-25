@@ -142,6 +142,74 @@ export default function HomeScreen() {
 
       <ScrollView contentContainerStyle={styles.body}>
         <CardCarousel name={userName} cards={cards} />
+
+        {/* Sections below the carousel: project goals, recent movements, credit proposals, completed projects */}
+        <View style={styles.sections}>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Metas en proyectos</Text>
+            {[
+              { id: 'p1', title: 'Mejorar alumbrado público', progress: 62, role: 'Colaborador' },
+              { id: 'p2', title: 'Parque comunitario', progress: 28, role: 'Organizador' },
+            ].map(p => (
+              <TouchableOpacity key={p.id} style={styles.itemCard} onPress={() => router.push(`/projects/${p.id}` as any)} activeOpacity={0.8}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.itemTitle}>{p.title}</Text>
+                  <Text style={styles.itemSubtitle}>{p.role}</Text>
+                  <View style={styles.progressContainer}>
+                    <View style={[styles.progressFill, { width: `${p.progress}%` }]} />
+                  </View>
+                </View>
+                <View style={styles.itemBadge}><Text style={styles.itemBadgeText}>{p.progress}%</Text></View>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Movimientos recientes</Text>
+            {[{
+              id: 'a1', text: 'Tu donación de $150 a Parque comunitario', time: '2h'
+            }, {
+              id: 'a2', text: 'María comentó en Mejorar alumbrado público', time: '5h'
+            }, {
+              id: 'a3', text: 'Se ha aprobado el presupuesto inicial para Parq. comunitario', time: '1d'
+            }].map(a => (
+              <View key={a.id} style={styles.activityRow}>
+                <Text style={styles.activityText}>{a.text}</Text>
+                <Text style={styles.activityTime}>{a.time}</Text>
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Propuestas de crédito y financiación</Text>
+            {[{ id: 'c1', title: 'Microcrédito para emprendedores', amount: 50000, status: 'En revisión' }].map(c => (
+              <View key={c.id} style={styles.itemCard}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.itemTitle}>{c.title}</Text>
+                  <Text style={styles.itemSubtitle}>${c.amount.toLocaleString()} • {c.status}</Text>
+                </View>
+                <TouchableOpacity style={styles.smallButton} onPress={() => router.push(`/credit/${c.id}` as any)}>
+                  <Text style={styles.smallButtonText}>Ver</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Proyectos completados</Text>
+            {[{ id: 'f1', title: 'Reciclaje vecinal', completedAt: '2025-09-22' }].map(f => (
+              <View key={f.id} style={styles.itemCard}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.itemTitle}>{f.title}</Text>
+                  <Text style={styles.itemSubtitle}>Completado {new Date(f.completedAt).toLocaleDateString()}</Text>
+                </View>
+                <TouchableOpacity style={styles.smallButton} onPress={() => router.push(`/projects/${f.id}` as any)}>
+                  <Text style={styles.smallButtonText}>Ver</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        </View>
       </ScrollView>
     </View>
   );
@@ -238,6 +306,35 @@ const styles = StyleSheet.create({
 
   pager: { flexDirection: 'row', marginTop: 12, alignItems: 'center' },
   dot: { height: 8, backgroundColor: LIGHT_GRAY, borderRadius: 8, marginHorizontal: 6, width: 8 },
+
+  sections: { width: '100%', maxWidth: 820, marginTop: 18 },
+  section: { marginBottom: 18, paddingHorizontal: 4 },
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: GRAY, marginBottom: 10 },
+  itemCard: { backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 10, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
+  itemTitle: { fontSize: 15, fontWeight: '700', color: GRAY },
+  itemSubtitle: { fontSize: 13, color: '#7a8288', marginTop: 4 },
+  itemBadge: { backgroundColor: LIGHT_GRAY, paddingHorizontal: 8, paddingVertical: 6, borderRadius: 10 },
+  itemBadgeText: { color: GRAY, fontWeight: '700' },
+
+  activityRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
+  activityText: { color: GRAY, flex: 1 },
+  activityTime: { color: '#9aa0a6', marginLeft: 8 },
+
+  smallButton: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: LIGHT_GRAY },
+  smallButtonText: { color: GRAY, fontWeight: '700' },
+
+  progressContainer: {
+    width: '100%',
+    height: 8,
+    backgroundColor: LIGHT_GRAY,
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginTop: 8,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: RED,
+  },
 
   // removed quick actions - keep styles minimal for mobile
 });
