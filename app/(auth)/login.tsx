@@ -16,7 +16,7 @@ export default function LoginScreen() {
     setError('');
     if (!email || !password) return setError('Completa ambos campos');
     // Simular login exitoso
-    router.replace('/' as any);
+    router.replace('/home' as any);
   }
 
   const isValid = email.trim().length > 0 && password.trim().length > 0;
