@@ -1,5 +1,5 @@
+import Header from '@/components/header';
 import { GRAY, LIGHT_GRAY, RED, WHITE } from '@/css/globalcss';
-import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
@@ -21,30 +21,11 @@ export default function LoginScreen() {
 
   const isValid = email.trim().length > 0 && password.trim().length > 0;
 
-  const Header = ({ canGoBack = true }: { canGoBack?: boolean }) => (
-    <View style={styles.header}>
-      <View style={styles.headerContent}>
-        {canGoBack && (
-          <TouchableOpacity style={styles.backButton} onPress={() => router.replace('/' as any)}>
-            <Ionicons name="arrow-back-outline" size={28} color={GRAY} />
-          </TouchableOpacity>
-        )}
-
-        <View style={styles.headerLogoGroup}>
-          <Image
-            source={require('@/assets/images/header-logo.png')}
-            style={styles.headerLogo}
-            contentFit="contain"
-          />
-          <Text style={styles.headerTitle}>Smart Cities</Text>
-        </View>
-      </View>
-    </View>
-  );
+  // using shared Header component
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
-      <Header />
+  <Header showBack onBack={() => router.replace('/' as any)} />
       <View style={styles.content}>
         <Image source={require('@/assets/images/maya.png')} style={styles.maya} />
         <Text style={styles.title}>Iniciar sesión</Text>

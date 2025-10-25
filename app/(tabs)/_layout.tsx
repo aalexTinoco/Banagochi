@@ -3,13 +3,14 @@ import React from 'react';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { RED } from '@/css/globalcss';
 
 export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        // Use a fixed tint color for the active tab (default/light style)
-        tabBarActiveTintColor: '#007AFF',
+        // Active tint color uses app RED from globalcss
+        tabBarActiveTintColor: RED,
         headerShown: false,
         tabBarButton: HapticTab,
       }}>
@@ -17,7 +18,7 @@ export default function TabLayout() {
         name="home"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
         }}
       />
     </Tabs>

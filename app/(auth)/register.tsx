@@ -1,5 +1,5 @@
+import Header from '@/components/header';
 import { GRAY, LIGHT_GRAY, RED, WHITE } from '@/css/globalcss';
-import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -234,41 +234,26 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
         });
     };
 
-    const Header = ({ canGoBack = true }) => (
-        <View style={styles.header}>
-            <View style={styles.headerContent}>
-                {canGoBack && (
-                    <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-                        <Ionicons name="arrow-back-outline" size={30} color={GRAY} />
-                    </TouchableOpacity>
-                )}
-                <TouchableOpacity style={styles.headerRightButton} onPress={() => router.push('/(auth)/login') }>
-                    <Text style={styles.headerRightText}>YA TENGO CUENTA</Text>
-                </TouchableOpacity>
-                <View style={styles.headerLogoGroup}>
-                    <Image
-                        source={require('@/assets/images/header-logo.png')}
-                        style={styles.headerLogo}
-                        contentFit="contain"
-                    />
-                    <Text style={styles.headerTitle}>Smart Cities</Text>
-                </View>
-            </View>
-            {isFormStep && (
-                <View style={styles.progressBarContainer}>
-                    <View style={[
-                        styles.progressBar,
-                        { width: `${((step - DIALOGUE_STEP_COUNT) / REGISTER_FIELD_COUNT) * 100}%` }
-                    ]} />
-                </View>
-            )}
-        </View>
-    );
+    // header replaced by shared Header component
 
     if (step < DIALOGUE_STEP_COUNT) {
         return (
             <View style={styles.onboardingContainer}>
-                <Header />
+                <Header
+                    showBack
+                    onBack={handleBack}
+                    onRightPress={() => router.push('/(auth)/login')}
+                    rightIconName="log-in-outline"
+                    rightAccessibilityLabel="Ir a login"
+                />
+                {isFormStep && (
+                    <View style={styles.progressBarContainer}>
+                        <View style={[
+                            styles.progressBar,
+                            { width: `${((step - DIALOGUE_STEP_COUNT) / REGISTER_FIELD_COUNT) * 100}%` }
+                        ]} />
+                    </View>
+                )}
                 <View style={onboardingStyles.contentCentered}>
                     <DialogueBubble 
                         dialogueText={dialogueTexts[step]}
@@ -298,7 +283,21 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
     if (isMotivationStep) {
         return (
             <View style={styles.onboardingContainer}>
-                <Header />
+                <Header
+                    showBack
+                    onBack={handleBack}
+                    onRightPress={() => router.push('/(auth)/login')}
+                    rightIconName="log-in-outline"
+                    rightAccessibilityLabel="Ir a login"
+                />
+                {isFormStep && (
+                    <View style={styles.progressBarContainer}>
+                        <View style={[
+                            styles.progressBar,
+                            { width: `${((step - DIALOGUE_STEP_COUNT) / REGISTER_FIELD_COUNT) * 100}%` }
+                        ]} />
+                    </View>
+                )}
                 <View style={onboardingStyles.contentCentered}>
                     <View style={onboardingStyles.dialogContainer}>
                         <Image source={require('@/assets/images/maya.png')} style={onboardingStyles.maya} />
@@ -357,7 +356,21 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
 
         return (
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: WHITE }}>
-                <Header />
+                <Header
+                    showBack
+                    onBack={handleBack}
+                    onRightPress={() => router.push('/(auth)/login')}
+                    rightIconName="log-in-outline"
+                    rightAccessibilityLabel="Ir a login"
+                />
+                {isFormStep && (
+                    <View style={styles.progressBarContainer}>
+                        <View style={[
+                            styles.progressBar,
+                            { width: `${((step - DIALOGUE_STEP_COUNT) / REGISTER_FIELD_COUNT) * 100}%` }
+                        ]} />
+                    </View>
+                )}
                 <ScrollView contentContainerStyle={styles.formContainer} keyboardShouldPersistTaps="handled">
                     
                     <View style={styles.formQuestion}>
