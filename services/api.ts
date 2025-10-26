@@ -1,828 +1,762 @@
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL || "http://localhost:4000";
+/**
+ * Banagochi API Service
+ * Centralized API calls for the mobile app
+ */
 
-let authToken: string | null = null;
-let userIdCache: string | null = null;
+import {
+  // Types
+  IUser,
+  IProject,
+  IAside,
+  ITransaction,
+  IMenu,
+  ICreditCard,
+  
+  // Request Types
+  RegisterRequest,
+  LoginRequest,
+  CreateProjectRequest,
+  UpdateProjectRequest,
+  CreateAsideRequest,
+  CreateTransactionRequest,
+  AddVoteRequest,
+  AddFundingRequest,
+  AddFeedItemRequest,
+  UpdateUserRequest,
+  UpdateBanorteAccountRequest,
+  CreateCreditCardRequest,
+  UpdateCreditCardRequest,
+  
+  // Response Types
+  ApiResponse,
+  AuthResponse,
+  ProjectsResponse,
+  AsideResponse,
+  AsidesResponse,
+  TransactionResponse,
+  TransactionsResponse,
+  ImpactDashboard,
+  PayrollProcessResult,
+  CreditCardResponse,
+  
+  // Filters
+  ProjectFilters,
+  TransactionFilters,
+  AsideFilters,
+} from './types';
 
-// ─────────────────────────────────────────────
-// Helpers internos
-// ─────────────────────────────────────────────
+import { getBaseUrl, ENDPOINTS, REQUEST_TIMEOUT, STORAGE_KEYS } from './config';
 
-function setAuthToken(token: string | null) {
-  authToken = token;
-}
+/**
+ * HTTP Client utility
+ */
+class HttpClient {
+  private baseUrl: string;
+  private timeout: number;
 
-function setUserId(id: string | null) {
-  userIdCache = id;
-}
-
-function getHeaders(isJson = true): HeadersInit {
-  const headers: Record<string, string> = {};
-  if (isJson) headers["Content-Type"] = "application/json";
-  if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
-  return headers;
-}
-
-async function handleResponse<T>(res: Response): Promise<T> {
-  let data: any = null;
-  const text = await res.text();
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = text || null;
+  constructor(baseUrl: string, timeout: number = REQUEST_TIMEOUT) {
+    this.baseUrl = baseUrl;
+    this.timeout = timeout;
   }
 
-  if (!res.ok) {
-    const message =
-      (data && (data.message || data.error)) ||
-      `HTTP ${res.status} ${res.statusText}`;
-    throw new Error(message);
-  }
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<T> {
+    const url = `${this.baseUrl}${endpoint}`;
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-  return data as T;
-}
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
+      });
 
-// pequeño wrapper para GET/POST/etc
-async function request<T>(
-  method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
-  path: string,
-  body?: any,
-  opts?: { isJsonBody?: boolean }
-): Promise<T> {
-  const isJsonBody = opts?.isJsonBody ?? true;
+      clearTimeout(timeoutId);
 
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method,
-    headers: getHeaders(isJsonBody),
-    body: body
-      ? isJsonBody
-        ? JSON.stringify(body)
-        : body // ej. FormData
-      : undefined,
-  });
-
-  return handleResponse<T>(res);
-}
-
-// ─────────────────────────────────────────────
-// Tipos rápidos (puedes ampliar según tu backend real)
-// ─────────────────────────────────────────────
-export type User = {
-  _id: string;
-  name: string;
-  email: string;
-  role?: any;
-  colony?: string;
-  curp?: string;
-  domicilio?: string;
-  banorteAccount?: {
-    number: string;
-    alias: string;
-    linked: boolean;
-    balance: number;
-  };
-  savedProjects?: string[];
-  votedProjects?: string[];
-  impactSummary?: {
-    totalContributed: number;
-    completedProjects: number;
-    balanceContributed: number;
-  };
-  status?: string;
-};
-
-export type Card = {
-  _id: string;
-  userId: string;
-  cardNumber: string;
-  holderName: string;
-  expiry: string;
-  type: string; // banortemujer | banorteclasica | banorteoro ...
-  maxCredit: number;
-  cutoffDay: number;
-  status?: string;
-};
-
-export type Category = {
-  _id: string;
-  name: string;
-  description?: string;
-};
-
-export type Company = {
-  _id: string;
-  name: string;
-  description?: string;
-  address?: string;
-  phone?: string;
-  email?: string;
-};
-
-export type Manufacturer = {
-  _id: string;
-  name: string;
-  description?: string;
-  country?: string;
-  website?: string;
-};
-
-export type Contact = {
-  _id: string;
-  name: string;
-  email?: string;
-  phone?: string;
-  company?: string;
-  position?: string;
-};
-
-export type Certification = {
-  _id: string;
-  name: string;
-  description?: string;
-  issuer?: string;
-  expiryDate?: string;
-};
-
-export type Note = {
-  _id: string;
-  title: string;
-  content: string;
-  category?: string;
-  priority?: string;
-};
-
-export type MenuItem = {
-  _id: string;
-  label: string;
-  icon?: string;
-  route?: string;
-  roles?: string[];
-};
-
-// ─────────────────────────────────────────────
-// API agrupada
-// ─────────────────────────────────────────────
-
-export const api = {
-  // ---------------- AUTH ----------------
-  auth: {
-    // POST /api/auth/register
-    async register(payload: {
-      name: string;
-      email: string;
-      password: string;
-      role: Array<{ name: string; permissions: string[] }>;
-      colony: string;
-      curp: string;
-      domicilio: string;
-    }): Promise<User> {
-      const data = await request<User>("POST", "/api/auth/register", payload);
-      // guardamos userId de conveniencia
-      if (data?._id) {
-        setUserId(data._id);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `HTTP Error: ${response.status}`);
       }
-      return data;
-    },
-
-    // POST /api/auth/login
-    async login(payload: {
-      email: string;
-      password: string;
-      deviceId: string;
-      deviceName: string;
-      token: string; // push token / FCM
-    }): Promise<{
-      token: string;
-      user: User;
-    }> {
-      const data = await request<{
-        token: string;
-        user: User;
-      }>("POST", "/api/auth/login", payload);
-
-      // cachear token y userId en memoria del cliente
-      if (data?.token) setAuthToken(data.token);
-      if (data?.user?._id) setUserId(data.user._id);
-
-      return data;
-    },
-
-    // POST /api/auth/logout
-    async logout(payload: {
-      userId: string;
-      deviceId: string;
-    }): Promise<{ message: string }> {
-      const data = await request<{ message: string }>(
-        "POST",
-        "/api/auth/logout",
-        payload
-      );
-      // limpiar cache local
-      setAuthToken(null);
-      return data;
-    },
-  },
-
-  // ---------------- USERS ----------------
-  users: {
-    // GET /api/users
-    async getAll(): Promise<User[]> {
-      return request<User[]>("GET", "/api/users");
-    },
-
-    // GET /api/users/:id
-    async getById(id?: string): Promise<User> {
-      const targetId = id || userIdCache;
-      if (!targetId) throw new Error("No userId provided");
-      return request<User>("GET", `/api/users/${targetId}`);
-    },
-
-    // PATCH /api/users/:id
-    async updateUser(
-      updates: Partial<Pick<User, "name" | "colony">>,
-      id?: string
-    ): Promise<User> {
-      const targetId = id || userIdCache;
-      if (!targetId) throw new Error("No userId provided");
-      return request<User>("PATCH", `/api/users/${targetId}`, updates);
-    },
-
-    // PATCH /api/users/:id/curp
-    async updateCurp(curp: string, id?: string): Promise<User> {
-      const targetId = id || userIdCache;
-      if (!targetId) throw new Error("No userId provided");
-      return request<User>("PATCH", `/api/users/${targetId}/curp`, { curp });
-    },
-
-    // PATCH /api/users/:id/domicilio
-    async updateDomicilio(domicilio: string, id?: string): Promise<User> {
-      const targetId = id || userIdCache;
-      if (!targetId) throw new Error("No userId provided");
-      return request<User>(
-        "PATCH",
-        `/api/users/${targetId}/domicilio`,
-        { domicilio }
-      );
-    },
-
-    // PATCH /api/users/:id/banorte-account
-    async updateBanorteAccount(
-      account: {
-        number: string;
-        alias: string;
-        linked: boolean;
-        balance: number;
-      },
-      id?: string
-    ): Promise<User> {
-      const targetId = id || userIdCache;
-      if (!targetId) throw new Error("No userId provided");
-      return request<User>(
-        "PATCH",
-        `/api/users/${targetId}/banorte-account`,
-        account
-      );
-    },
-
-    // PATCH /api/users/:id/saved-projects
-    async addSavedProject(projectId: string, id?: string): Promise<User> {
-      const targetId = id || userIdCache;
-      if (!targetId) throw new Error("No userId provided");
-      return request<User>(
-        "PATCH",
-        `/api/users/${targetId}/saved-projects`,
-        { projectId }
-      );
-    },
-
-    // PATCH /api/users/:id/voted-projects
-    async addVotedProject(projectId: string, id?: string): Promise<User> {
-      const targetId = id || userIdCache;
-      if (!targetId) throw new Error("No userId provided");
-      return request<User>(
-        "PATCH",
-        `/api/users/${targetId}/voted-projects`,
-        { projectId }
-      );
-    },
-
-    // PATCH /api/users/:id/impact-summary
-    async updateImpactSummary(
-      summary: {
-        totalContributed: number;
-        completedProjects: number;
-        balanceContributed: number;
-      },
-      id?: string
-    ): Promise<User> {
-      const targetId = id || userIdCache;
-      if (!targetId) throw new Error("No userId provided");
-      return request<User>(
-        "PATCH",
-        `/api/users/${targetId}/impact-summary`,
-        summary
-      );
-    },
-
-    // DELETE /api/users/:id  (baja lógica)
-    async softDelete(id?: string): Promise<{ message: string }> {
-      const targetId = id || userIdCache;
-      if (!targetId) throw new Error("No userId provided");
-      return request<{ message: string }>(
-        "DELETE",
-        `/api/users/${targetId}`
-      );
-    },
-  },
-
-  // ---------------- CREDIT CARDS ----------------
-  cards: {
-    // POST /api/cards
-    async create(payload: {
-      userId: string;
-      cardNumber: string;
-      holderName: string;
-      expiry: string;
-      type: string;
-      maxCredit: number;
-      cutoffDay: number;
-    }): Promise<Card> {
-      return request<Card>("POST", `/api/cards`, payload);
-    },
-
-    // GET /api/cards/user/:userId
-    async getByUser(userId?: string): Promise<Card[]> {
-      const id = userId || userIdCache;
-      if (!id) throw new Error("No userId provided");
-      return request<Card[]>(`GET`, `/api/cards/user/${id}`);
-    },
-
-    // GET /api/cards/:cardId
-    async getById(cardId: string): Promise<Card> {
-      return request<Card>("GET", `/api/cards/${cardId}`);
-    },
-
-    // PATCH /api/cards/:cardId
-    async updateCard(
-      cardId: string,
-      updates: Partial<Pick<Card, "maxCredit" | "cutoffDay" | "status">>
-    ): Promise<Card> {
-      return request<Card>("PATCH", `/api/cards/${cardId}`, updates);
-    },
-
-    // DELETE /api/cards/:cardId
-    async deleteCard(cardId: string): Promise<{ message: string }> {
-      return request<{ message: string }>(
-        "DELETE",
-        `/api/cards/${cardId}`
-      );
-    },
-  },
-
-  // ---------------- MENU ----------------
-  menu: {
-    // GET /api/menu
-    async getAll(): Promise<MenuItem[]> {
-      return request<MenuItem[]>("GET", `/api/menu`);
-    },
-  },
-
-  // ─────────────────────────────────────
-  // Extras del otro backend (MYD style)
-  // Rutas bajo /api/routes/...
-  // ─────────────────────────────────────
-
-  mydAuth: {
-    // POST /api/routes/users/auth  (login)
-    async login(payload: { email: string; password: string }): Promise<{
-      accessToken: string;
-      refreshToken: string;
-      user?: { _id: string; [k: string]: any };
-    }> {
-      const data = await request<{
-        accessToken: string;
-        refreshToken: string;
-        user?: { _id: string };
-      }>("POST", "/api/routes/users/auth", payload);
-
-      if (data.accessToken) setAuthToken(data.accessToken);
-      if (data.user?._id) setUserId(data.user._id);
-
-      return data;
-    },
-
-    // POST /api/routes/users/auth/refresh
-    async refresh(payload: { refreshToken: string }) {
-      const data = await request<{
-        accessToken: string;
-        refreshToken: string;
-      }>("POST", "/api/routes/users/auth/refresh", payload);
-
-      if (data.accessToken) setAuthToken(data.accessToken);
-      return data;
-    },
-
-    // DELETE /api/routes/users/auth  (logout)
-    async logout(): Promise<{ message?: string }> {
-      const data = await request<{ message?: string }>(
-        "DELETE",
-        "/api/routes/users/auth"
-      );
-      setAuthToken(null);
-      setUserId(null);
-      return data;
-    },
-
-    // GET /api/routes/users/auth?action=time
-    async tokenInfo() {
-      return request<any>(
-        "GET",
-        `/api/routes/users/auth?action=time`
-      );
-    },
-
-    // GET /api/routes/users/auth?action=verify&token=...
-    async verifyToken(token?: string) {
-      const tk = token || authToken;
-      if (!tk) throw new Error("No token to verify");
-      return request<any>(
-        "GET",
-        `/api/routes/users/auth?action=verify&token=${encodeURIComponent(tk)}`
-      );
-    },
-  },
-
-  mydUsers: {
-    // POST /api/routes/users  (register)
-    async create(payload: {
-      name: string;
-      email: string;
-      password: string;
-      role: string;
-    }): Promise<User> {
-      return request<User>("POST", "/api/routes/users", payload);
-    },
-
-    // GET /api/routes/users
-    async getAll(): Promise<User[]> {
-      return request<User[]>("GET", "/api/routes/users");
-    },
-
-    // GET /api/routes/users/:id
-    async getById(id?: string): Promise<User> {
-      const targetId = id || userIdCache;
-      if (!targetId) throw new Error("No userId provided");
-      return request<User>("GET", `/api/routes/users/${targetId}`);
-    },
-
-    // PUT /api/routes/users/:id
-    async update(
-      updates: { name?: string; email?: string },
-      id?: string
-    ): Promise<User> {
-      const targetId = id || userIdCache;
-      if (!targetId) throw new Error("No userId provided");
-      return request<User>("PUT", `/api/routes/users/${targetId}`, updates);
-    },
-
-    // DELETE /api/routes/users/:id
-    async remove(id?: string): Promise<{ message?: string }> {
-      const targetId = id || userIdCache;
-      if (!targetId) throw new Error("No userId provided");
-      return request<{ message?: string }>(
-        "DELETE",
-        `/api/routes/users/${targetId}`
-      );
-    },
-
-    // GET /api/routes/users/permissions
-    async getPermissions(): Promise<string[]> {
-      return request<string[]>(
-        "GET",
-        "/api/routes/users/permissions"
-      );
-    },
-  },
-
-  categories: {
-    // POST /api/routes/category
-    async create(payload: { name: string; description?: string }) {
-      return request<Category>(
-        "POST",
-        "/api/routes/category",
-        payload
-      );
-    },
-
-    // GET /api/routes/category
-    async getAll() {
-      return request<Category[]>("GET", "/api/routes/category");
-    },
-
-    // GET /api/routes/category/:id
-    async getById(id: string) {
-      return request<Category>(
-        "GET",
-        `/api/routes/category/${id}`
-      );
-    },
-
-    // PATCH /api/routes/category/:id
-    async update(id: string, payload: { name?: string; description?: string }) {
-      return request<Category>(
-        "PATCH",
-        `/api/routes/category/${id}`,
-        payload
-      );
-    },
-
-    // DELETE /api/routes/category/:id
-    async remove(id: string) {
-      return request<{ message?: string }>(
-        "DELETE",
-        `/api/routes/category/${id}`
-      );
-    },
-  },
-
-  companies: {
-    // POST /api/routes/company
-    async create(payload: {
-      name: string;
-      description?: string;
-      address?: string;
-      phone?: string;
-      email?: string;
-    }) {
-      return request<Company>(
-        "POST",
-        "/api/routes/company",
-        payload
-      );
-    },
-
-    // GET /api/routes/company
-    async getAll() {
-      return request<Company[]>(
-        "GET",
-        "/api/routes/company"
-      );
-    },
-
-    // GET /api/routes/company/:id
-    async getById(id: string) {
-      return request<Company>(
-        "GET",
-        `/api/routes/company/${id}`
-      );
-    },
-
-    // PATCH /api/routes/company/:id
-    async update(id: string, payload: Partial<Company>) {
-      return request<Company>(
-        "PATCH",
-        `/api/routes/company/${id}`,
-        payload
-      );
-    },
-
-    // DELETE /api/routes/company/:id?hard=false
-    async remove(id: string, hard = false) {
-      const qs = `?hard=${hard ? "true" : "false"}`;
-      return request<{ message?: string }>(
-        "DELETE",
-        `/api/routes/company/${id}${qs}`
-      );
-    },
-  },
-
-  manufacturers: {
-    // POST /api/routes/manufacturer
-    async create(payload: {
-      name: string;
-      description?: string;
-      country?: string;
-      website?: string;
-    }) {
-      return request<Manufacturer>(
-        "POST",
-        "/api/routes/manufacturer",
-        payload
-      );
-    },
-
-    // GET /api/routes/manufacturer
-    async getAll() {
-      return request<Manufacturer[]>(
-        "GET",
-        "/api/routes/manufacturer"
-      );
-    },
-
-    // GET /api/routes/manufacturer/:id
-    async getById(id: string) {
-      return request<Manufacturer>(
-        "GET",
-        `/api/routes/manufacturer/${id}`
-      );
-    },
-
-    // PATCH /api/routes/manufacturer/:id
-    async update(id: string, payload: Partial<Manufacturer>) {
-      return request<Manufacturer>(
-        "PATCH",
-        `/api/routes/manufacturer/${id}`,
-        payload
-      );
-    },
-
-    // DELETE /api/routes/manufacturer/:id?hard=false
-    async remove(id: string, hard = false) {
-      const qs = `?hard=${hard ? "true" : "false"}`;
-      return request<{ message?: string }>(
-        "DELETE",
-        `/api/routes/manufacturer/${id}${qs}`
-      );
-    },
-  },
-
-  contacts: {
-    // POST /api/routes/contacts
-    async create(payload: {
-      name: string;
-      email?: string;
-      phone?: string;
-      company?: string;
-      position?: string;
-    }) {
-      return request<Contact>(
-        "POST",
-        "/api/routes/contacts",
-        payload
-      );
-    },
-
-    // GET /api/routes/contacts
-    async getAll() {
-      return request<Contact[]>(
-        "GET",
-        "/api/routes/contacts"
-      );
-    },
-
-    // GET /api/routes/contacts/:id
-    async getById(id: string) {
-      return request<Contact>(
-        "GET",
-        `/api/routes/contacts/${id}`
-      );
-    },
-
-    // PATCH /api/routes/contacts/:id
-    async update(id: string, payload: Partial<Contact>) {
-      return request<Contact>(
-        "PATCH",
-        `/api/routes/contacts/${id}`,
-        payload
-      );
-    },
-
-    // DELETE /api/routes/contacts/:id
-    async remove(id: string) {
-      return request<{ message?: string }>(
-        "DELETE",
-        `/api/routes/contacts/${id}`
-      );
-    },
-  },
-
-  certifications: {
-    // POST /api/routes/certifications
-    async create(payload: {
-      name: string;
-      description?: string;
-      issuer?: string;
-      expiryDate?: string;
-    }) {
-      return request<Certification>(
-        "POST",
-        "/api/routes/certifications",
-        payload
-      );
-    },
-
-    // GET /api/routes/certifications
-    async getAll() {
-      return request<Certification[]>(
-        "GET",
-        "/api/routes/certifications"
-      );
-    },
-
-    // GET /api/routes/certifications/:id
-    async getById(id: string) {
-      return request<Certification>(
-        "GET",
-        `/api/routes/certifications/${id}`
-      );
-    },
-
-    // PATCH /api/routes/certifications/:id
-    async update(id: string, payload: Partial<Certification>) {
-      return request<Certification>(
-        "PATCH",
-        `/api/routes/certifications/${id}`,
-        payload
-      );
-    },
-
-    // DELETE /api/routes/certifications/:id
-    async remove(id: string) {
-      return request<{ message?: string }>(
-        "DELETE",
-        `/api/routes/certifications/${id}`
-      );
-    },
-  },
-
-  notes: {
-    // POST /api/routes/notes
-    async create(payload: {
-      title: string;
-      content: string;
-      category?: string;
-      priority?: string;
-    }) {
-      return request<Note>(
-        "POST",
-        "/api/routes/notes",
-        payload
-      );
-    },
-
-    // GET /api/routes/notes
-    async getAll() {
-      return request<Note[]>(
-        "GET",
-        "/api/routes/notes"
-      );
-    },
-
-    // GET /api/routes/notes/:id
-    async getById(id: string) {
-      return request<Note>(
-        "GET",
-        `/api/routes/notes/${id}`
-      );
-    },
-
-    // PATCH /api/routes/notes/:id
-    async update(id: string, payload: Partial<Note>) {
-      return request<Note>(
-        "PATCH",
-        `/api/routes/notes/${id}`,
-        payload
-      );
-    },
-
-    // DELETE /api/routes/notes/:id
-    async remove(id: string) {
-      return request<{ message?: string }>(
-        "DELETE",
-        `/api/routes/notes/${id}`
-      );
-    },
-  },
-
-  admin: {
-    // GET /api/admin/clean-indexes
-    async checkIndexes() {
-      return request<any>("GET", "/api/admin/clean-indexes");
-    },
-
-    // GET /api/admin/clean-indexes?action=problematic
-    async checkProblematic() {
-      return request<any>(
-        "GET",
-        "/api/admin/clean-indexes?action=problematic"
-      );
-    },
-
-    // POST /api/admin/clean-indexes
-    async clean() {
-      return request<any>("POST", "/api/admin/clean-indexes");
-    },
-
-    // PUT /api/admin/clean-indexes
-    async recreateIndexes() {
-      return request<any>("PUT", "/api/admin/clean-indexes");
-    },
-  },
-};
-
-// También exportamos helpers para que puedas usarlos en hooks
-export const session = {
-  getToken: () => authToken,
-  setToken: setAuthToken,
-  getUserId: () => userIdCache,
-  setUserId,
-};
+
+      return await response.json();
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Network request failed');
+    }
+  }
+
+  async get<T>(endpoint: string, headers?: HeadersInit): Promise<T> {
+    return this.request<T>(endpoint, { method: 'GET', headers });
+  }
+
+  async post<T>(endpoint: string, data?: any, headers?: HeadersInit): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'POST',
+      headers,
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
+  async put<T>(endpoint: string, data?: any, headers?: HeadersInit): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'PUT',
+      headers,
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
+  async patch<T>(endpoint: string, data?: any, headers?: HeadersInit): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'PATCH',
+      headers,
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
+  async delete<T>(endpoint: string, headers?: HeadersInit): Promise<T> {
+    return this.request<T>(endpoint, { method: 'DELETE', headers });
+  }
+
+  async postFormData<T>(endpoint: string, formData: FormData, headers?: HeadersInit): Promise<T> {
+    const url = `${this.baseUrl}${endpoint}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          ...headers,
+          // Don't set Content-Type for FormData - browser will set it automatically with boundary
+        },
+        body: formData,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `HTTP Error: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Network request failed');
+    }
+  }
+}
+
+/**
+ * Authentication Token Manager
+ */
+class AuthManager {
+  private static instance: AuthManager;
+  private token: string | null = null;
+
+  private constructor() {
+    this.loadToken();
+  }
+
+  static getInstance(): AuthManager {
+    if (!AuthManager.instance) {
+      AuthManager.instance = new AuthManager();
+    }
+    return AuthManager.instance;
+  }
+
+  private loadToken(): void {
+    if (typeof window !== 'undefined') {
+      this.token = localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
+    }
+  }
+
+  setToken(token: string): void {
+    this.token = token;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, token);
+    }
+  }
+
+  getToken(): string | null {
+    return this.token;
+  }
+
+  clearToken(): void {
+    this.token = null;
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN);
+    }
+  }
+
+  getAuthHeaders(): HeadersInit {
+    return this.token ? { Authorization: `Bearer ${this.token}` } : {};
+  }
+}
+
+/**
+ * API Service Class
+ */
+class BanagochiAPI {
+  private usersClient: HttpClient;
+  private operationalClient: HttpClient;
+  private authManager: AuthManager;
+
+  constructor() {
+    this.usersClient = new HttpClient(getBaseUrl('USERS_SERVICE'));
+    this.operationalClient = new HttpClient(getBaseUrl('OPERATIONAL_SERVICE'));
+    this.authManager = AuthManager.getInstance();
+  }
+
+  // ============================================
+  // AUTHENTICATION
+  // ============================================
+
+  /**
+   * Register a new user
+   */
+  async register(data: RegisterRequest): Promise<AuthResponse> {
+    const formData = new FormData();
+    formData.append('name', data.name);
+    formData.append('email', data.email);
+    formData.append('password', data.password);
+    formData.append('role', JSON.stringify(data.role));
+    
+    if (data.colony) formData.append('colony', data.colony);
+    if (data.domicilio) formData.append('domicilio', data.domicilio);
+    if (data.selfie) formData.append('selfie', data.selfie);
+    if (data.ine) formData.append('ine', data.ine);
+
+    const response = await this.usersClient.postFormData<any>(
+      ENDPOINTS.AUTH.REGISTER,
+      formData
+    );
+
+    return response;
+  }
+
+  /**
+   * Login user
+   */
+  async login(data: LoginRequest): Promise<AuthResponse> {
+    const formData = new FormData();
+    formData.append('email', data.email);
+    formData.append('password', data.password);
+    formData.append('deviceId', data.deviceId);
+    
+    if (data.deviceName) formData.append('deviceName', data.deviceName);
+    if (data.selfie) formData.append('selfie', data.selfie);
+    if (data.ine) formData.append('ine', data.ine);
+
+    const response = await this.usersClient.postFormData<AuthResponse>(
+      ENDPOINTS.AUTH.LOGIN,
+      formData
+    );
+
+    // Store token
+    if (response.token) {
+      this.authManager.setToken(response.token);
+      if (typeof window !== 'undefined' && response.user) {
+        localStorage.setItem(STORAGE_KEYS.USER_ID, response.user.id);
+        localStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(response.user));
+      }
+    }
+
+    return response;
+  }
+
+  /**
+   * Get token remaining time
+   */
+  async getTokenTime(userId: string): Promise<any> {
+    return this.usersClient.post(ENDPOINTS.AUTH.GET_TOKEN_TIME, { userId });
+  }
+
+  /**
+   * Update/refresh token
+   */
+  async updateToken(userId: string): Promise<any> {
+    return this.usersClient.get(`${ENDPOINTS.AUTH.UPDATE_TOKEN}?userId=${userId}`);
+  }
+
+  /**
+   * Forgot password
+   */
+  async forgotPassword(email: string): Promise<any> {
+    return this.usersClient.post(ENDPOINTS.AUTH.FORGOT_PASSWORD, { email });
+  }
+
+  /**
+   * Reset password
+   */
+  async resetPassword(token: string, newPassword: string): Promise<any> {
+    return this.usersClient.post(ENDPOINTS.AUTH.RESET_PASSWORD, { token, newPassword });
+  }
+
+  /**
+   * Logout from specific device
+   */
+  async logoutDevice(userId: string, deviceId: string): Promise<any> {
+    const endpoint = ENDPOINTS.AUTH.LOGOUT_DEVICE.replace(':id', userId);
+    return this.usersClient.post(endpoint, { deviceId }, this.authManager.getAuthHeaders());
+  }
+
+  /**
+   * Logout from all devices
+   */
+  async logoutAll(userId: string): Promise<any> {
+    const endpoint = ENDPOINTS.AUTH.LOGOUT_ALL.replace(':id', userId);
+    const response = await this.usersClient.post(endpoint, {}, this.authManager.getAuthHeaders());
+    
+    // Clear local storage
+    this.authManager.clearToken();
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEYS.USER_ID);
+      localStorage.removeItem(STORAGE_KEYS.USER_DATA);
+    }
+
+    return response;
+  }
+
+  // ============================================
+  // USERS
+  // ============================================
+
+  /**
+   * Get all users
+   */
+  async getAllUsers(): Promise<{ message: string; users: IUser[] }> {
+    return this.usersClient.get(ENDPOINTS.USERS.GET_ALL, this.authManager.getAuthHeaders());
+  }
+
+  /**
+   * Get user by ID
+   */
+  async getUserById(userId: string): Promise<{ message: string; user: IUser }> {
+    const endpoint = ENDPOINTS.USERS.GET_BY_ID.replace(':id', userId);
+    return this.usersClient.get(endpoint, this.authManager.getAuthHeaders());
+  }
+
+  /**
+   * Update user
+   */
+  async updateUser(userId: string, data: UpdateUserRequest): Promise<any> {
+    const endpoint = ENDPOINTS.USERS.UPDATE.replace(':id', userId);
+    return this.usersClient.put(endpoint, data, this.authManager.getAuthHeaders());
+  }
+
+  /**
+   * Delete user (soft delete)
+   */
+  async deleteUser(userId: string): Promise<any> {
+    const endpoint = ENDPOINTS.USERS.DELETE.replace(':id', userId);
+    return this.usersClient.delete(endpoint, this.authManager.getAuthHeaders());
+  }
+
+  /**
+   * Get admin users
+   */
+  async getAdmins(): Promise<IUser[]> {
+    return this.usersClient.get(ENDPOINTS.USERS.GET_ADMINS, this.authManager.getAuthHeaders());
+  }
+
+  /**
+   * Get user devices
+   */
+  async getUserDevices(userId: string): Promise<any> {
+    const endpoint = ENDPOINTS.USERS.GET_DEVICES.replace(':id', userId);
+    return this.usersClient.get(endpoint, this.authManager.getAuthHeaders());
+  }
+
+  // ============================================
+  // MENU
+  // ============================================
+
+  /**
+   * Create new menu
+   */
+  async createMenu(data: any): Promise<IMenu> {
+    return this.usersClient.post(ENDPOINTS.MENU.CREATE, data, this.authManager.getAuthHeaders());
+  }
+
+  /**
+   * Get menus by role
+   */
+  async getMenusByRole(role: string): Promise<IMenu[]> {
+    return this.usersClient.get(
+      `${ENDPOINTS.MENU.GET_BY_ROLE}?role=${role}`,
+      this.authManager.getAuthHeaders()
+    );
+  }
+
+  /**
+   * Delete menu (soft delete)
+   */
+  async deleteMenu(menuId: string): Promise<any> {
+    const endpoint = ENDPOINTS.MENU.DELETE.replace(':id', menuId);
+    return this.usersClient.patch(endpoint, {}, this.authManager.getAuthHeaders());
+  }
+
+  // ============================================
+  // CREDIT CARDS
+  // ============================================
+
+  /**
+   * Create a new credit card
+   */
+  async createCreditCard(data: CreateCreditCardRequest): Promise<CreditCardResponse> {
+    return this.usersClient.post(
+      ENDPOINTS.CARDS.CREATE,
+      data,
+      {
+        ...this.authManager.getAuthHeaders(),
+        'Content-Type': 'application/json',
+      }
+    );
+  }
+
+  /**
+   * Get user credit cards
+   */
+  async getUserCreditCards(userId: string): Promise<CreditCardResponse> {
+    const endpoint = ENDPOINTS.CARDS.GET_USER_CARDS.replace(':userId', userId);
+    return this.usersClient.get(endpoint, this.authManager.getAuthHeaders());
+  }
+
+  /**
+   * Get credit card by ID
+   */
+  async getCreditCardById(cardId: string): Promise<CreditCardResponse> {
+    const endpoint = ENDPOINTS.CARDS.GET_BY_ID.replace(':cardId', cardId);
+    return this.usersClient.get(endpoint, this.authManager.getAuthHeaders());
+  }
+
+  /**
+   * Update credit card
+   */
+  async updateCreditCard(cardId: string, data: UpdateCreditCardRequest): Promise<CreditCardResponse> {
+    const endpoint = ENDPOINTS.CARDS.UPDATE.replace(':cardId', cardId);
+    return this.usersClient.patch(
+      endpoint,
+      data,
+      {
+        ...this.authManager.getAuthHeaders(),
+        'Content-Type': 'application/json',
+      }
+    );
+  }
+
+  /**
+   * Delete credit card
+   */
+  async deleteCreditCard(cardId: string): Promise<any> {
+    const endpoint = ENDPOINTS.CARDS.DELETE.replace(':cardId', cardId);
+    return this.usersClient.delete(endpoint, this.authManager.getAuthHeaders());
+  }
+
+  // ============================================
+  // PROJECTS
+  // ============================================
+
+  /**
+   * Create a new project
+   */
+  async createProject(data: CreateProjectRequest): Promise<ApiResponse<IProject>> {
+    return this.operationalClient.post(ENDPOINTS.PROJECTS.CREATE, data);
+  }
+
+  /**
+   * Get all projects
+   */
+  async getAllProjects(filters?: ProjectFilters): Promise<ProjectsResponse> {
+    let endpoint = ENDPOINTS.PROJECTS.GET_ALL;
+    
+    if (filters) {
+      const params = new URLSearchParams();
+      if (filters.status) params.append('status', filters.status);
+      if (filters.colonia) params.append('colonia', filters.colonia);
+      if (filters.active !== undefined) params.append('active', String(filters.active));
+      
+      const queryString = params.toString();
+      if (queryString) endpoint += `?${queryString}`;
+    }
+
+    return this.operationalClient.get(endpoint);
+  }
+
+  /**
+   * Get project by ID
+   */
+  async getProjectById(projectId: string): Promise<ApiResponse<IProject>> {
+    const endpoint = ENDPOINTS.PROJECTS.GET_BY_ID.replace(':id', projectId);
+    return this.operationalClient.get(endpoint);
+  }
+
+  /**
+   * Update project
+   */
+  async updateProject(projectId: string, data: UpdateProjectRequest): Promise<ApiResponse<IProject>> {
+    const endpoint = ENDPOINTS.PROJECTS.UPDATE.replace(':id', projectId);
+    return this.operationalClient.put(endpoint, data);
+  }
+
+  /**
+   * Delete project (soft delete)
+   */
+  async deleteProject(projectId: string): Promise<ApiResponse<IProject>> {
+    const endpoint = ENDPOINTS.PROJECTS.DELETE.replace(':id', projectId);
+    return this.operationalClient.delete(endpoint);
+  }
+
+  /**
+   * Permanently delete project
+   */
+  async permanentDeleteProject(projectId: string): Promise<ApiResponse<boolean>> {
+    const endpoint = ENDPOINTS.PROJECTS.PERMANENT_DELETE.replace(':id', projectId);
+    return this.operationalClient.delete(endpoint);
+  }
+
+  /**
+   * Add vote to project
+   */
+  async addVote(projectId: string, voterId: string): Promise<ApiResponse<IProject>> {
+    const endpoint = ENDPOINTS.PROJECTS.ADD_VOTE.replace(':id', projectId);
+    return this.operationalClient.post(endpoint, { voterId });
+  }
+
+  /**
+   * Add funding to project
+   */
+  async addFunding(projectId: string, amount: number): Promise<ApiResponse<IProject>> {
+    const endpoint = ENDPOINTS.PROJECTS.ADD_FUNDING.replace(':id', projectId);
+    return this.operationalClient.post(endpoint, { amount });
+  }
+
+  /**
+   * Add feed item to project
+   */
+  async addFeedItem(projectId: string, data: AddFeedItemRequest): Promise<ApiResponse<IProject>> {
+    const endpoint = ENDPOINTS.PROJECTS.ADD_FEED.replace(':id', projectId);
+    return this.operationalClient.post(endpoint, data);
+  }
+
+  /**
+   * Get projects by colonia
+   */
+  async getProjectsByColonia(colonia: string): Promise<ProjectsResponse> {
+    const endpoint = ENDPOINTS.PROJECTS.BY_COLONIA.replace(':colonia', colonia);
+    return this.operationalClient.get(endpoint);
+  }
+
+  /**
+   * Get projects by status
+   */
+  async getProjectsByStatus(status: string): Promise<ProjectsResponse> {
+    const endpoint = ENDPOINTS.PROJECTS.BY_STATUS.replace(':status', status);
+    return this.operationalClient.get(endpoint);
+  }
+
+  /**
+   * Get projects by proposer
+   */
+  async getProjectsByProposer(proposerId: string): Promise<ProjectsResponse> {
+    const endpoint = ENDPOINTS.PROJECTS.BY_PROPOSER.replace(':proposerId', proposerId);
+    return this.operationalClient.get(endpoint);
+  }
+
+  // ============================================
+  // ASIDES (APARTADOS)
+  // ============================================
+
+  /**
+   * Create a payroll aside
+   */
+  async createAside(data: CreateAsideRequest): Promise<AsideResponse> {
+    return this.operationalClient.post(ENDPOINTS.ASIDES.CREATE, data);
+  }
+
+  /**
+   * Get user asides
+   */
+  async getUserAsides(userId: string, filters?: AsideFilters): Promise<AsidesResponse> {
+    let endpoint = ENDPOINTS.ASIDES.GET_USER_ASIDES.replace(':userId', userId);
+    
+    if (filters?.status) {
+      endpoint += `?status=${filters.status}`;
+    }
+
+    return this.operationalClient.get(endpoint);
+  }
+
+  /**
+   * Get aside by ID
+   */
+  async getAsideById(asideId: string): Promise<AsideResponse> {
+    const endpoint = ENDPOINTS.ASIDES.GET_BY_ID.replace(':asideId', asideId);
+    return this.operationalClient.get(endpoint);
+  }
+
+  /**
+   * Get project asides
+   */
+  async getProjectAsides(projectId: string): Promise<AsidesResponse> {
+    const endpoint = ENDPOINTS.ASIDES.GET_PROJECT_ASIDES.replace(':projectId', projectId);
+    return this.operationalClient.get(endpoint);
+  }
+
+  /**
+   * Pause aside
+   */
+  async pauseAside(asideId: string): Promise<AsideResponse> {
+    const endpoint = ENDPOINTS.ASIDES.PAUSE.replace(':asideId', asideId);
+    return this.operationalClient.patch(endpoint);
+  }
+
+  /**
+   * Reactivate aside
+   */
+  async reactivateAside(asideId: string): Promise<AsideResponse> {
+    const endpoint = ENDPOINTS.ASIDES.REACTIVATE.replace(':asideId', asideId);
+    return this.operationalClient.patch(endpoint);
+  }
+
+  /**
+   * Cancel aside
+   */
+  async cancelAside(asideId: string): Promise<AsideResponse> {
+    const endpoint = ENDPOINTS.ASIDES.CANCEL.replace(':asideId', asideId);
+    return this.operationalClient.patch(endpoint);
+  }
+
+  /**
+   * Update aside amount
+   */
+  async updateAsideAmount(asideId: string, amountPerCycle: number): Promise<AsideResponse> {
+    const endpoint = ENDPOINTS.ASIDES.UPDATE_AMOUNT.replace(':asideId', asideId);
+    return this.operationalClient.patch(endpoint, { amountPerCycle });
+  }
+
+  // ============================================
+  // TRANSACTIONS
+  // ============================================
+
+  /**
+   * Create one-time transaction
+   */
+  async createOneTimeTransaction(data: CreateTransactionRequest): Promise<TransactionResponse> {
+    return this.operationalClient.post(ENDPOINTS.TRANSACTIONS.CREATE_ONE_TIME, data);
+  }
+
+  /**
+   * Process payroll deductions (cron job)
+   */
+  async processPayrollDeductions(): Promise<PayrollProcessResult> {
+    return this.operationalClient.post(ENDPOINTS.TRANSACTIONS.PROCESS_PAYROLL);
+  }
+
+  /**
+   * Get user transactions
+   */
+  async getUserTransactions(userId: string, filters?: TransactionFilters): Promise<TransactionsResponse> {
+    let endpoint = ENDPOINTS.TRANSACTIONS.GET_USER_TRANSACTIONS.replace(':userId', userId);
+    
+    if (filters) {
+      const params = new URLSearchParams();
+      if (filters.status) params.append('status', filters.status);
+      if (filters.projectId) params.append('projectId', filters.projectId);
+      if (filters.source) params.append('source', filters.source);
+      
+      const queryString = params.toString();
+      if (queryString) endpoint += `?${queryString}`;
+    }
+
+    return this.operationalClient.get(endpoint);
+  }
+
+  /**
+   * Get project transactions
+   */
+  async getProjectTransactions(projectId: string): Promise<TransactionsResponse> {
+    const endpoint = ENDPOINTS.TRANSACTIONS.GET_PROJECT_TRANSACTIONS.replace(':projectId', projectId);
+    return this.operationalClient.get(endpoint);
+  }
+
+  /**
+   * Get user impact dashboard
+   */
+  async getUserImpactDashboard(userId: string): Promise<ImpactDashboard> {
+    const endpoint = ENDPOINTS.TRANSACTIONS.GET_IMPACT_DASHBOARD.replace(':userId', userId);
+    return this.operationalClient.get(endpoint);
+  }
+
+  // ============================================
+  // UTILITY METHODS
+  // ============================================
+
+  /**
+   * Get current auth token
+   */
+  getAuthToken(): string | null {
+    return this.authManager.getToken();
+  }
+
+  /**
+   * Check if user is authenticated
+   */
+  isAuthenticated(): boolean {
+    return !!this.authManager.getToken();
+  }
+
+  /**
+   * Get stored user ID
+   */
+  getUserId(): string | null {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem(STORAGE_KEYS.USER_ID);
+    }
+    return null;
+  }
+
+  /**
+   * Get stored user data
+   */
+  getStoredUserData(): any | null {
+    if (typeof window !== 'undefined') {
+      const data = localStorage.getItem(STORAGE_KEYS.USER_DATA);
+      return data ? JSON.parse(data) : null;
+    }
+    return null;
+  }
+
+  /**
+   * Clear all stored data
+   */
+  clearStorage(): void {
+    this.authManager.clearToken();
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEYS.USER_ID);
+      localStorage.removeItem(STORAGE_KEYS.USER_DATA);
+      localStorage.removeItem(STORAGE_KEYS.DEVICE_ID);
+    }
+  }
+}
+
+// Export singleton instance
+export const api = new BanagochiAPI();
+
+// Export class for custom instances if needed
+export default BanagochiAPI;
