@@ -1,32 +1,98 @@
-import { Project, useProjects } from '@/app/state/projects-store';
 import Header from '@/components/header';
 import ProjectCard from '@/components/project-card';
 import ProjectModal from '@/components/project-modal';
+import CreateProjectModal from '@/components/create-project-modal';
 import { GRAY, LIGHT_GRAY, RED, WHITE } from '@/css/globalcss';
 import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions, ActivityIndicator, RefreshControl, Alert } from 'react-native';
+import { useUser } from '@/app/state/user-store';
+import { API, type Project as APIProject } from '@/services/api';
+import { Ionicons } from '@expo/vector-icons';
 
-// PieChart removed; modal rendering moved to component
+// Local Project type for UI
+type UIProject = {
+  id: string;
+  title: string;
+  role?: string;
+  donated: number;
+  goal: number;
+  recentMovements?: Array<{ id: string; name?: string; amount?: number; time: string; date?: string }>;
+  image?: any;
+  description?: string;
+  colonia?: string;
+  status?: string;
+  coverImage?: string;
+};
 
 
 export default function ProjectsScreen() {
   const router = useRouter();
-  const [selected, setSelected] = useState<Project | null>(null);
+  const user = useUser();
+  
+  const [selected, setSelected] = useState<UIProject | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [createModalVisible, setCreateModalVisible] = useState(false);
+  const [projects, setProjects] = useState<UIProject[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // shared projects store
-  const [projects] = useProjects();
+  // Load projects from API
+  const loadProjects = async () => {
+    try {
+      const allProjects = await API.projects.getAll();
+      
+      // Transform API projects to UI format
+      const uiProjects: UIProject[] = allProjects.map((p: APIProject) => ({
+        id: p._id,
+        title: p.title,
+        description: p.description,
+        colonia: p.colonia,
+        donated: p.currentAmount,
+        goal: p.fundingGoal,
+        status: p.status,
+        coverImage: p.coverImage,
+        image: p.coverImage ? { uri: p.coverImage } : require('@/assets/images/Banorte-TDC-Basica-.avif'),
+        recentMovements: [], // Se cargarían desde transacciones si es necesario
+      }));
+      
+      setProjects(uiProjects);
+    } catch (error) {
+      console.error('Error loading projects:', error);
+      Alert.alert('Error', 'No se pudieron cargar los proyectos');
+    } finally {
+      setIsLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    loadProjects();
+  }, []);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    loadProjects();
+  };
+
+  const handleCreateProject = () => {
+    setCreateModalVisible(true);
+  };
+
+  const handleProjectCreated = () => {
+    setCreateModalVisible(false);
+    loadProjects(); // Reload projects after creation
+  };
 
   // dynamic suggestions derived from projects and selected project
   const suggestions = useMemo(() => {
     const items: { id: string; title: string }[] = [];
-    const active = projects.filter(p => p.donated < p.goal);
-    const completed = projects.filter(p => p.donated >= p.goal);
+    const active = projects.filter(p => p.status !== 'COMPLETED' && p.donated < p.goal);
+    const completed = projects.filter(p => p.status === 'COMPLETED' || p.donated >= p.goal);
 
     // If a project is selected, prioritize suggestions for it
     if (selected) {
-      if (selected.donated < selected.goal) {
+      if (selected.donated < selected.goal && selected.status !== 'COMPLETED') {
         items.push({ id: `promote_${selected.id}`, title: `Promocionar "${selected.title}" para alcanzar la meta` });
         items.push({ id: `event_${selected.id}`, title: `Organizar un evento/actividad para "${selected.title}"` });
         items.push({ id: `match_${selected.id}`, title: `Buscar patrocinador que haga matches para "${selected.title}"` });
@@ -56,50 +122,109 @@ export default function ProjectsScreen() {
   const windowW = useWindowDimensions().width;
   const cardW = Math.min(windowW - 96, 320);
 
-  const openProject = (p: Project) => {
+  const openProject = (p: UIProject) => {
     setSelected(p);
     setModalVisible(true);
   };
+
+  const completedProjects = useMemo(() => {
+    return projects.filter(p => p.status === 'COMPLETED' || p.donated >= p.goal);
+  }, [projects]);
+
+  const activeProjects = useMemo(() => {
+    return projects.filter(p => p.status !== 'COMPLETED' && p.donated < p.goal);
+  }, [projects]);
+
+  if (!user) {
+    return (
+      <View style={styles.container}>
+        <Header showBack={false} rightIconName="log-out-outline" onRightPress={() => router.replace('/')} rightAccessibilityLabel="Cerrar sesión" />
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ color: GRAY }}>No hay sesión activa</Text>
+          <TouchableOpacity onPress={() => router.replace('/')} style={{ marginTop: 20 }}>
+            <Text style={{ color: RED, fontWeight: '700' }}>Ir a inicio</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <View style={styles.container}>
+        <Header showBack={false} rightIconName="log-out-outline" onRightPress={() => router.replace('/')} rightAccessibilityLabel="Cerrar sesión" />
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={RED} />
+          <Text style={{ marginTop: 16, color: GRAY }}>Cargando proyectos...</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <Header showBack={false} rightIconName="log-out-outline" onRightPress={() => router.replace('/')} rightAccessibilityLabel="Cerrar sesión" />
 
-      <ScrollView contentContainerStyle={styles.body}>
-        <Text style={styles.sectionTitle}>Proyectos compartidos</Text>
+      <ScrollView 
+        contentContainerStyle={styles.body}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={RED} />
+        }
+      >
+        {/* Header with create button */}
+        <View style={styles.headerRow}>
+          <Text style={styles.sectionTitle}>Proyectos activos</Text>
+          <TouchableOpacity onPress={handleCreateProject} style={styles.createButton}>
+            <Ionicons name="add-circle" size={24} color={RED} />
+            <Text style={styles.createButtonText}>Crear</Text>
+          </TouchableOpacity>
+        </View>
 
-        {/* Carousel of shared image cards (componentized) */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingLeft: 16, paddingRight: 32 }}>
-          {projects.map((p) => (
-            <ProjectCard key={p.id} project={p} width={cardW} onPress={() => openProject(p)} />
-          ))}
-        </ScrollView>
+        {/* Carousel of active projects */}
+        {activeProjects.length > 0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingLeft: 16, paddingRight: 32 }}>
+            {activeProjects.map((p) => (
+              <ProjectCard key={p.id} project={p} width={cardW} onPress={() => openProject(p)} />
+            ))}
+          </ScrollView>
+        ) : (
+          <Text style={styles.emptyText}>No hay proyectos activos</Text>
+        )}
 
-        {/* Completed section below - simulated as list */}
+        {/* Completed section below */}
         <View style={{ marginTop: 22 }}>
           <Text style={styles.sectionTitle}>Completados</Text>
-          {projects.slice(0, 2).map((c) => (
+          {completedProjects.length > 0 ? completedProjects.slice(0, 5).map((c) => (
             <TouchableOpacity key={c.id} style={styles.itemCard} activeOpacity={0.85} onPress={() => openProject(c)}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.itemTitle}>{c.title}</Text>
-                <Text style={styles.itemSubtitle}>Completado</Text>
+                <Text style={styles.itemSubtitle}>Completado • ${c.donated.toLocaleString()} recaudados</Text>
               </View>
               <View style={styles.itemBadge}><Text style={styles.itemBadgeText}>Ver</Text></View>
             </TouchableOpacity>
-          ))}
+          )) : (
+            <Text style={styles.emptyText}>Aún no hay proyectos completados</Text>
+          )}
         </View>
 
         {/* suggestions area */}
-        <View style={{ marginTop: 18 }}>
-          <Text style={styles.sectionTitle}>Sugerencias</Text>
-          {suggestions.map(s => (
-            <View key={s.id} style={styles.suggestionCard}><Text style={{ color: GRAY, fontWeight: '700' }}>{s.title}</Text></View>
-          ))}
-        </View>
+        {suggestions.length > 0 && (
+          <View style={{ marginTop: 18 }}>
+            <Text style={styles.sectionTitle}>Sugerencias</Text>
+            {suggestions.map(s => (
+              <View key={s.id} style={styles.suggestionCard}><Text style={{ color: GRAY, fontWeight: '700' }}>{s.title}</Text></View>
+            ))}
+          </View>
+        )}
       </ScrollView>
 
-      {/* Modal delegated to component */}
+      {/* Modals */}
       <ProjectModal project={selected} visible={modalVisible} onClose={() => setModalVisible(false)} />
+      <CreateProjectModal 
+        visible={createModalVisible} 
+        onClose={() => setCreateModalVisible(false)}
+        onProjectCreated={handleProjectCreated}
+      />
     </View>
   );
 }
@@ -123,6 +248,37 @@ const styles = StyleSheet.create({
 
   suggestionCard: { backgroundColor: '#fff', padding: 12, marginHorizontal: 16, borderRadius: 10, marginBottom: 8 },
   suggestionRow: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
+
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    marginBottom: 10,
+  },
+  createButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: RED,
+  },
+  createButtonText: {
+    color: RED,
+    fontWeight: '700',
+    marginLeft: 4,
+  },
+  emptyText: {
+    color: '#9aa0a6',
+    fontSize: 14,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+  },
 
   modalSafe: { flex: 1, backgroundColor: '#fff' },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },

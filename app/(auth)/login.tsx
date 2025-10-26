@@ -3,6 +3,7 @@ import BiometricVerificationModal from '@/components/biometric-verification-moda
 import { GRAY, LIGHT_GRAY, RED, WHITE } from '@/css/globalcss';
 import { useDeviceId } from '@/hooks/use-device-id';
 import { AuthService, HttpError } from '@/services/api';
+import { setUser } from '@/app/state/user-store';
 import Constants from 'expo-constants';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
@@ -70,6 +71,9 @@ export default function LoginScreen() {
 
       // Successful login - check if we have a valid token
       if (response.token && response.user) {
+        // Save user and token to store
+        await setUser(response.user, response.token);
+        
         setIsLoading(false);
         
         // Navigate to home immediately
@@ -151,6 +155,9 @@ export default function LoginScreen() {
 
       // Check if we have a valid token (success can be undefined in some responses)
       if (response.token && response.user) {
+        // Save user and token to store
+        await setUser(response.user, response.token);
+        
         setShowBiometricModal(false);
         setPendingCredentials(null);
         setIsLoading(false);
