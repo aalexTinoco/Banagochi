@@ -1,19 +1,9 @@
+import { Project, useProjects } from '@/app/state/projects-store';
 import Header from '@/components/header';
 import { GRAY, LIGHT_GRAY, RED, WHITE } from '@/css/globalcss';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import { Dimensions, Image, ImageBackground, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-
-type Movement = { id: string; name?: string; amount?: number; time: string; date?: string };
-
-type Project = {
-  id: string;
-  title: string;
-  role?: string;
-  donated: number;
-  goal: number;
-  recentMovements?: Movement[];
-};
 
 // Se elimina el componente PieChart.
 
@@ -34,19 +24,8 @@ export default function ProjectsScreen() {
   const [selected, setSelected] = useState<Project | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
-  // mock data
-  const projects = useMemo<Project[]>(() => [
-    { id: 'p1', title: 'Mejorar alumbrado público', role: 'Colaborador', donated: 12400, goal: 20000, recentMovements: [
-      { id: 'm1', name: 'María López', amount: 150, time: '2h', date: '2025-10-24' },
-      { id: 'm2', name: 'Carlos Ruiz', amount: 500, time: '1d', date: '2025-10-23' },
-    ] },
-    { id: 'p2', title: 'Parque comunitario', role: 'Organizador', donated: 5600, goal: 20000, recentMovements: [
-      { id: 'm3', name: 'Ana Gómez', amount: 200, time: '3h', date: '2025-10-24' },
-    ] },
-    { id: 'p3', title: 'Huertos urbanos', role: 'Colaborador', donated: 8000, goal: 10000, recentMovements: [
-      { id: 'm4', name: 'Luis Pérez', amount: 1200, time: '5d', date: '2025-10-20' },
-    ] },
-  ], []);
+  // shared projects store
+  const [projects] = useProjects();
 
   // dynamic suggestions derived from projects and selected project
   const suggestions = useMemo(() => {
@@ -102,7 +81,7 @@ export default function ProjectsScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingLeft: 16, paddingRight: 32 }}>
           {projects.map((p) => (
             <TouchableOpacity key={p.id} style={[styles.shareCard, { width: cardW }]} activeOpacity={0.9} onPress={() => openProject(p)}>
-              <ImageBackground source={require('@/assets/images/Banorte-TDC-Basica-.avif')} style={styles.cardImage} imageStyle={{ borderRadius: 12 }}>
+              <ImageBackground source={p.image ? p.image : require('@/assets/images/Banorte-TDC-Basica-.avif')} style={styles.cardImage} imageStyle={{ borderRadius: 12 }}>
                 <View style={styles.cardImageOverlay}>
                   <Text style={styles.shareCardTitleWhite}>{p.title}</Text>
                   <View style={styles.shareCardFooterRow}>
@@ -148,7 +127,7 @@ export default function ProjectsScreen() {
 
           <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
             {/* Big image of the project */}
-            <Image source={require('@/assets/images/Banorte-TDC-Basica-.avif')} style={styles.modalImage} resizeMode="contain" />
+            <Image source={selected?.image ? selected.image : require('@/assets/images/Banorte-TDC-Basica-.avif')} style={styles.modalImage} resizeMode="contain" />
 
             {/* Always show Actions (Insights + Movements) — tabs removed per request */}
             <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
@@ -187,7 +166,7 @@ export default function ProjectsScreen() {
               })()}
 
               <Text style={{ fontWeight: '800', color: GRAY, marginBottom: 8 }}>Movimientos</Text>
-              {(selected?.recentMovements ?? []).map((m: Movement) => (
+                {(selected?.recentMovements ?? []).map((m) => (
                 <View key={m.id} style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f3f4f6', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <View>
                     <Text style={{ color: GRAY, fontWeight: '700' }}>{m.name ?? 'Anónimo'}</Text>
