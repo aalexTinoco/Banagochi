@@ -2,16 +2,16 @@
  * User Service
  */
 
-import { HttpClient } from '../utils/http-client';
 import { API_CONFIG, API_ENDPOINTS } from '../config/api.config';
 import type {
+  Device,
+  LogoutDeviceRequest,
   RegisterUserRequest,
   UpdateUserRequest,
   UserResponse,
   UsersListResponse,
-  LogoutDeviceRequest,
-  Device,
 } from '../types';
+import { HttpClient } from '../utils/http-client';
 
 export class UserService {
   private static baseUrl = API_CONFIG.USERS_BASE_URL;
@@ -19,7 +19,17 @@ export class UserService {
   /**
    * Register new user with biometric verification
    */
-  static async register(data: RegisterUserRequest): Promise<UserResponse> {
+  static async register(data: RegisterUserRequest | FormData): Promise<UserResponse> {
+    // If data is already FormData, use it directly
+    if (data instanceof FormData) {
+      console.log('📤 Sending FormData directly to register endpoint');
+      return HttpClient.uploadFormData<UserResponse>(
+        `${this.baseUrl}${API_ENDPOINTS.USERS.REGISTER}`,
+        data
+      );
+    }
+
+    // Otherwise, prepare FormData from object
     const formData = new FormData();
     formData.append('name', data.name);
     formData.append('email', data.email);
