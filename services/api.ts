@@ -43,8 +43,8 @@ export {
   ProjectService, TransactionService, UserService
 } from './modules';
 
-// Export types
-export * from './types';
+// Export all types
+export type * from './types';
 
 // Export configuration
 export { API_CONFIG, API_ENDPOINTS } from './config/api.config';

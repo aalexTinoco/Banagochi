@@ -4,8 +4,10 @@ import Header from '@/components/header';
 import OptionCard from '@/components/option-card';
 import PhotoCapture from '@/components/photo-capture';
 import ProgressBar from '@/components/progress-bar';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { GRAY, LIGHT_GRAY, RED, WHITE } from '@/css/globalcss';
 import { API } from '@/services/api';
+// API_CONFIG import removed since endpoint debug logs are removed
 import Constants from 'expo-constants';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -63,6 +65,8 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
 
     const [colonias, setColonias] = useState<string[]>([]);
     const [showColoniaPicker, setShowColoniaPicker] = useState(false);
+    const [registrationStatus, setRegistrationStatus] = useState('');
+    // Debug log state removed
 
     async function pickPhotoFor(key: 'selfie' | 'ine') {
         try {
@@ -74,7 +78,12 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
 
             const res = await ImagePicker.launchCameraAsync({ quality: 0.7 });
             const uri = (res as any).assets?.[0]?.uri ?? (res as any).uri;
-            if (uri) setFormData(prev => ({ ...prev, [key]: uri }));
+            
+            if (uri) {
+                // Store the photo
+                setFormData(prev => ({ ...prev, [key]: uri }));
+                setFormError('');
+            }
         } catch (e) {
             console.warn(e);
             setFormError('No se pudo tomar la foto');
@@ -121,12 +130,18 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
         }
     }
 
+    // Debug helper removed
+
     // Register user with backend
     async function registerUser() {
+        if (isLoading) return; // prevent double submit
         setIsLoading(true);
         setFormError('');
-
+        // Clear debug logs removed
+        
         try {
+            setRegistrationStatus('Validando datos...');
+            
             // Validate all required fields
             if (!formData.name || !formData.email || !formData.password) {
                 throw new Error('Por favor completa todos los campos requeridos');
@@ -143,38 +158,71 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
             // Concatenate address fields into domicilio
             const domicilio = `${formData.calle} ${formData.numero}${formData.referencia ? ', ' + formData.referencia : ''}`.trim();
 
-            // Prepare the image files for upload
+            setRegistrationStatus('Preparando datos...');
+
+            // Prepare FormData for multipart upload
+            const registrationData = new FormData();
+            
+            // Add user data fields
+            registrationData.append('name', formData.name);
+            registrationData.append('email', formData.email);
+            registrationData.append('password', formData.password);
+            registrationData.append('colony', formData.colonia);
+            registrationData.append('domicilio', domicilio);
+            // Optional/extra fields collected in the UI
+            if (formData.postal) registrationData.append('postal', formData.postal);
+            registrationData.append('openBankingConsent', String(!!formData.allowOpenBanking));
+            if (selectedMotivation) registrationData.append('motivation', selectedMotivation);
+            
+            // Add role as array
+            registrationData.append('role', JSON.stringify([{ type: 'user' }]));
+            
+            // Field-by-field debug removed
+            
+            // Add biometric images with proper format for React Native
             const selfieFile = {
                 uri: formData.selfie,
                 type: 'image/jpeg',
                 name: 'selfie.jpg',
             };
-
+            
             const ineFile = {
                 uri: formData.ine,
                 type: 'image/jpeg',
                 name: 'ine.jpg',
             };
+            
+            registrationData.append('selfie', selfieFile as any);
+            registrationData.append('ine', ineFile as any);
+
+            // Image debug removed
+
+            setRegistrationStatus('Enviando al servidor...');
 
             // Call the API to register the user
-            const response = await API.users.register({
-                name: formData.name,
-                email: formData.email,
-                password: formData.password,
-                role: [{ type: 'user' }], // Default role
-                colony: formData.colonia,
-                domicilio: domicilio, // Concatenated address
-                selfie: selfieFile as any,
-                ine: ineFile as any,
-            });
+            const response = await API.users.register(registrationData as any);
 
-            if (response.success) {
+
+            setRegistrationStatus('Procesando respuesta...');
+
+            // Check various success conditions
+            const isSuccess = response.success === true || 
+                            response.success === 'true' || 
+                            !!response.user || 
+                            !!response.data?.user;
+
+            if (isSuccess) {
+                const userData = response.user || response.data?.user;
+                
+                setRegistrationStatus('¡Registro completado!');
+                
+                // Show success message
                 Alert.alert(
-                    '¡Registro exitoso!',
-                    'Tu cuenta ha sido creada. Ahora puedes iniciar sesión.',
+                    'Registro exitoso',
+                    `Tu cuenta ha sido creada y verificada.\n\nUsuario: ${userData?.name || formData.name}\nEmail: ${userData?.email || formData.email}\n\nAhora puedes iniciar sesión.`,
                     [
                         {
-                            text: 'OK',
+                            text: 'Ir a Login',
                             onPress: () => {
                                 router.replace('/(auth)/login' as any);
                             },
@@ -182,21 +230,73 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
                     ]
                 );
             } else {
-                throw new Error(response.message || 'Error al registrar usuario');
+                const errorMsg = response.message || 
+                               response.error || 
+                               response.data?.message || 
+                               'Error desconocido al registrar usuario';
+                
+                throw new Error(errorMsg);
             }
         } catch (error: any) {
-            console.error('Registration error:', error);
-            setFormError(error.message || 'Error al crear la cuenta. Intenta nuevamente.');
-            Alert.alert('Error', error.message || 'No se pudo completar el registro');
+            // Silent error logging removed
+            
+            let errorMessage = 'Error al crear la cuenta. Intenta nuevamente.';
+            
+            // Try to extract error message from various possible locations
+            if (error.response?.data?.message) {
+                errorMessage = error.response.data.message;
+            } else if (error.data?.message) {
+                errorMessage = error.data.message;
+            } else if (error.message) {
+                errorMessage = error.message;
+            } else if (typeof error === 'string') {
+                errorMessage = error;
+            }
+            
+            // Check if it's a biometric verification error
+            const isBiometricError = errorMessage.toLowerCase().includes('rostro') || 
+                errorMessage.toLowerCase().includes('biométric') ||
+                errorMessage.toLowerCase().includes('foto') ||
+                errorMessage.toLowerCase().includes('face') ||
+                errorMessage.toLowerCase().includes('verification') ||
+                errorMessage.toLowerCase().includes('image');
+            
+            if (isBiometricError) {
+                errorMessage = `Error de Verificación Biométrica\n\n${errorMessage}\n\nPor favor, regresa y toma las fotos nuevamente con buena iluminación.`;
+                
+                // Clear photos so user can retake them
+                setFormData(prev => ({ 
+                    ...prev, 
+                    selfie: null, 
+                    ine: null 
+                }));
+                
+                // Go back to the selfie step
+                setStep(DIALOGUE_STEP_COUNT + 1 + 3); // Step for selfie photo
+            }
+            
+            setRegistrationStatus('Error en el registro');
+            setFormError(errorMessage);
+            
+            Alert.alert(
+                'Error de Registro',
+                errorMessage,
+                [
+                    {
+                        text: 'OK',
+                        onPress: () => {}
+                    }
+                ]
+            );
         } finally {
             setIsLoading(false);
         }
     }
 
     const dialogueTexts = useMemo(() => [
-        '¡ Hola! Soy Maya, tu guía. 😊 Estoy aquí para presentarte Smart Cities.',
-        ' Esta aplicación te permite proponer ideas, consultar servicios de tu ciudad, y pronto, gestionar trámites financieros con Banorte.',
-        ' ¿Listo para crear tu cuenta y comenzar?',
+        '¡Hola! Soy Maya, tu guía. Estoy aquí para presentarte Smart Cities.',
+        'Esta aplicación te permite proponer ideas, consultar servicios de tu ciudad, y pronto, gestionar trámites financieros con Banorte.',
+        '¿Listo para crear tu cuenta y comenzar?',
     ], []);
 
     const formFields = useMemo(() => [
@@ -292,6 +392,7 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
                     setFormError('Por favor toma la foto requerida.');
                     return;
                 }
+                
                 setStep(s => Math.min(s + 1, MAX_STEP));
                 return;
             }
@@ -444,12 +545,28 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
         const rawValue = (formData as any)[inputKey];
         
         let isInputValid = false;
-        if (fieldType === 'photo') {
-            isInputValid = !!rawValue;
-        } else if (typeof rawValue === 'string') {
-            isInputValid = rawValue.trim().length > 0;
+        
+        // If it's the last step, check if all data is complete
+        if (isLastFormStep) {
+            isInputValid = !!(
+                formData.name && 
+                formData.email && 
+                formData.password && 
+                formData.selfie && 
+                formData.ine && 
+                formData.colonia && 
+                formData.calle && 
+                formData.numero
+            );
         } else {
-            isInputValid = !!rawValue;
+            // For form steps, validate current field
+            if (fieldType === 'photo') {
+                isInputValid = !!rawValue;
+            } else if (typeof rawValue === 'string') {
+                isInputValid = rawValue.trim().length > 0;
+            } else {
+                isInputValid = !!rawValue;
+            }
         }
 
         return (
@@ -539,11 +656,30 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
                         {isLoading && (
                             <View style={styles.loadingContainer}>
                                 <ActivityIndicator size="large" color={RED} />
-                                <Text style={styles.loadingText}>
-                                    {isLastFormStep ? 'Creando tu cuenta...' : 'Cargando...'}
-                                </Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <IconSymbol
+                                        name={isLastFormStep ? 'magnifyingglass.circle' : 'clock'}
+                                        color={isLastFormStep ? RED : GRAY}
+                                        size={16}
+                                    />
+                                    <Text style={[styles.loadingText, { marginLeft: 6 }]}>
+                                        {isLastFormStep ? 'Verificando fotos y creando tu cuenta...' : 'Cargando...'}
+                                    </Text>
+                                </View>
+                                {(isLastFormStep && !!registrationStatus) && (
+                                    <View style={styles.statusContainer}>
+                                        <Text style={styles.statusText}>{registrationStatus}</Text>
+                                    </View>
+                                )}
+                                {isLastFormStep && (
+                                    <Text style={styles.loadingSubtext}>
+                                        Esto puede tomar unos segundos mientras la IA verifica tus fotos
+                                    </Text>
+                                )}
                             </View>
                         )}
+
+                        {/* Debug logs removed */}
 
                         {/* Allow user to connect Banorte via Open Banking on the last step */}
                         {isLastFormStep && !isLoading && (
@@ -563,11 +699,17 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
                                     activeOpacity={0.85}
                                 >
                                     {((formData as any).allowOpenBanking) ? (
-                                        <Text style={[styles.bankButtonText, styles.bankButtonTextConnected]}>
-                                            Conectado ✓
-                                        </Text>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                            <IconSymbol name="checkmark.circle.fill" color={WHITE} size={16} />
+                                            <Text style={[styles.bankButtonText, styles.bankButtonTextConnected, { marginLeft: 6 }]}>
+                                                Conectado
+                                            </Text>
+                                        </View>
                                     ) : (
-                                        <Text style={styles.bankButtonText}>Conectar con Banorte</Text>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                            <IconSymbol name="link" color={GRAY} size={16} />
+                                            <Text style={[styles.bankButtonText, { marginLeft: 6 }]}>Conectar con Banorte</Text>
+                                        </View>
                                     )}
                                 </TouchableOpacity>
                             </View>
@@ -581,7 +723,13 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
                                         styles.button, 
                                         isInputValid ? styles.primaryGreen : styles.disabled
                                     ]} 
-                                    onPress={handleNext}
+                                    onPress={() => {
+                                        if (isLastFormStep) {
+                                            registerUser();
+                                        } else {
+                                            handleNext();
+                                        }
+                                    }}
                                     disabled={!isInputValid || isLoading}
                                     activeOpacity={0.8}
                                 >
@@ -712,6 +860,66 @@ const styles = StyleSheet.create({
     loadingText: {
         color: GRAY,
         fontSize: 14,
+        fontWeight: '600',
+    },
+    loadingSubtext: {
+        color: GRAY,
+        fontSize: 12,
+        textAlign: 'center',
+        marginTop: 8,
+        paddingHorizontal: 20,
+    },
+    statusContainer: {
+        backgroundColor: '#FFF9F0',
+        padding: 12,
+        borderRadius: 8,
+        marginTop: 12,
+        borderWidth: 1,
+        borderColor: '#FFE4B5',
+    },
+    statusText: {
+        color: RED,
+        fontSize: 14,
+        fontWeight: '600',
+        textAlign: 'center',
+    },
+    debugContainer: {
+        marginTop: 20,
+        backgroundColor: '#f5f5f5',
+        borderRadius: 8,
+        padding: 12,
+        maxHeight: 300,
+        borderWidth: 1,
+        borderColor: '#ddd',
+    },
+    debugTitle: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: GRAY,
+        marginBottom: 8,
+    },
+    debugScrollView: {
+        maxHeight: 200,
+    },
+    debugLog: {
+        fontSize: 11,
+        fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+        color: '#333',
+        marginBottom: 4,
+        lineHeight: 16,
+    },
+    copyLogsButton: {
+        marginTop: 8,
+        padding: 8,
+        backgroundColor: WHITE,
+        borderRadius: 6,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: LIGHT_GRAY,
+    },
+    copyLogsText: {
+        fontSize: 12,
+        color: RED,
         fontWeight: '600',
     },
     buttonText: {
