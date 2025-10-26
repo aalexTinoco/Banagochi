@@ -86,12 +86,15 @@ export interface AddFeedRequest {
 
 export interface ProjectsResponse {
   success: boolean;
-  projects: Project[];
+  count?: number;
+  data?: Project[];
+  projects?: Project[]; // Backward compatibility
   message?: string;
 }
 
 export interface ProjectResponse {
   success: boolean;
-  project: Project;
+  data?: Project;
+  project?: Project; // Backward compatibility
   message?: string;
 }

@@ -57,6 +57,15 @@ export class UserService {
   }
 
   /**
+   * Get users by colony
+   */
+  static async getUsersByColony(colony: string): Promise<UsersListResponse> {
+    return HttpClient.get<UsersListResponse>(
+      `${this.baseUrl}${API_ENDPOINTS.USERS.GET_BY_COLONY(colony)}`
+    );
+  }
+
+  /**
    * Update user
    */
   static async updateUser(

@@ -38,6 +38,7 @@ export const API_ENDPOINTS = {
     REGISTER: '/api/users/register',
     GET_ALL: '/api/users/getall',
     GET_BY_ID: (id: string) => `/api/users/get/${id}`,
+    GET_BY_COLONY: (colony: string) => `/api/users/colony/${colony}`,
     UPDATE: (id: string) => `/api/users/update/${id}`,
     DELETE: (id: string) => `/api/users/delete/${id}`,
     GET_ADMINS: '/api/users/getadmins',

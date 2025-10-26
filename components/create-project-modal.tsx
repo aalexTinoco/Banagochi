@@ -78,7 +78,7 @@ export default function CreateProjectModal({ visible, onClose, onProjectCreated 
     setIsSubmitting(true);
 
     try {
-      await API.projects.createProject({
+      const createdProject = await API.projects.createProject({
         title: title.trim(),
         description: description.trim(),
         colonia,
@@ -87,11 +87,61 @@ export default function CreateProjectModal({ visible, onClose, onProjectCreated 
           name: supplierName.trim(),
           account: supplierAccount.trim(),
         },
-      });
+        // Back-end requires proposerId and votingStats — provide them from the current user
+        proposerId: user.id,
+        votingStats: {
+          votesNeeded: 0,
+          votesFor: 0,
+          voters: [],
+        },
+      } as any);
+
+      // Crear tarjeta automáticamente al crear el proyecto
+      const project = createdProject.data || createdProject.project;
+      if (project?._id && user?.id) {
+        try {
+          // Generar número de tarjeta único basado en timestamp y userId
+          const timestamp = Date.now().toString().slice(-8);
+          const userIdPart = user.id.slice(-4);
+          const cardNumber = `4152${timestamp}${userIdPart}`;
+          
+          // Determinar tipo de tarjeta basado en el monto del proyecto
+          const fundingGoal = Number(goal);
+          let cardType: 'banortemujer' | 'banorteclasica' | 'banorteoro';
+          let maxCredit: number;
+          
+          if (fundingGoal < 5000) {
+            cardType = 'banortemujer';
+            maxCredit = 5000;
+          } else if (fundingGoal < 20000) {
+            cardType = 'banorteclasica';
+            maxCredit = 20000;
+          } else {
+            cardType = 'banorteoro';
+            maxCredit = 50000;
+          }
+          
+          // Crear la tarjeta vinculada al proyecto
+          await API.cards.createCard({
+            userId: user.id,
+            cardNumber,
+            holderName: user.name || 'Usuario',
+            expiry: new Date(Date.now() + 3 * 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 7), // 3 años
+            type: cardType,
+            maxCredit,
+            cutoffDay: 15,
+          });
+          
+          console.log('✅ Tarjeta creada automáticamente para el proyecto:', project._id);
+        } catch (cardError) {
+          console.error('⚠️ Error creando tarjeta automática:', cardError);
+          // No bloqueamos el flujo si falla la creación de tarjeta
+        }
+      }
 
       Alert.alert(
         '¡Proyecto creado!',
-        'Tu proyecto ha sido creado exitosamente. Ahora necesita votos para ser aprobado.',
+        'Tu proyecto y tarjeta han sido creados exitosamente. Ahora necesita votos para ser aprobado.',
         [{ text: 'OK', onPress: () => {
           onClose();
           onProjectCreated();

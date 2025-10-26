@@ -76,8 +76,8 @@ export default function LoginScreen() {
         
         setIsLoading(false);
         
-        // Navigate to home immediately
-        router.replace('/(tabs)' as any);
+  // Navigate to home immediately
+  router.replace('/(tabs)/home' as any);
         
         // Show success message after navigation
         setTimeout(() => {
@@ -162,8 +162,8 @@ export default function LoginScreen() {
         setPendingCredentials(null);
         setIsLoading(false);
         
-        // Navigate to home immediately
-        router.replace('/(tabs)' as any);
+  // Navigate to home immediately
+  router.replace('/(tabs)/home' as any);
         
         // Show success message after navigation
         setTimeout(() => {

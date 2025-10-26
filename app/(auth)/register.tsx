@@ -203,8 +203,8 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
         { key: 'name', type: 'input', placeholder: 'Nombre Completo', title: '¡Comencemos con tu nombre!' },
         { key: 'email', type: 'input', placeholder: 'Correo Electrónico', title: 'Ahora, tu email...', keyboardType: 'email-address' },
         { key: 'password', type: 'input', placeholder: 'Contraseña Segura (mín. 6 caracteres)', title: 'Crea una contraseña.', secureTextEntry: true },
-        { key: 'selfie', type: 'photo', title: 'Toma una foto de tu rostro' },
-        { key: 'ine', type: 'photo', title: 'Toma una foto de tu INE (frente)' },
+        { key: 'selfie', type: 'photo', title: 'Verificación biométrica' },
+        { key: 'ine', type: 'photo', title: 'Documento de identificación' },
         { key: 'postal', type: 'input', placeholder: 'Código postal (5 dígitos)', title: '¿Cuál es tu código postal?', keyboardType: 'numeric' },
         { key: 'colonia', type: 'select', title: 'Selecciona tu colonia' },
         { key: 'calle', type: 'input', placeholder: 'Nombre de la calle', title: '¿Cuál es el nombre de tu calle?' },
@@ -501,7 +501,10 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
                                 {currentFormField.type === 'photo' && (
                                     <PhotoCapture 
                                         uri={(formData as any)[inputKey]} 
-                                        onTake={() => pickPhotoFor(inputKey as any)} 
+                                        onTake={() => pickPhotoFor(inputKey as any)}
+                                        type={inputKey === 'selfie' ? 'selfie' : 'id'}
+                                        step={inputKey === 'selfie' ? 1 : 2}
+                                        totalSteps={2}
                                     />
                                 )}
 

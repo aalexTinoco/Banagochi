@@ -25,7 +25,8 @@ export class ProjectsService {
     const response = await HttpClient.get<ProjectsResponse>(
       `${this.baseUrl}${API_ENDPOINTS.PROJECTS.GET_ALL}`
     );
-    return response.projects || [];
+    // Handle both response formats: { data: [...] } or { projects: [...] }
+    return response.data || response.projects || [];
   }
 
   /**
@@ -35,7 +36,11 @@ export class ProjectsService {
     const response = await HttpClient.get<ProjectResponse>(
       `${this.baseUrl}${API_ENDPOINTS.PROJECTS.GET_BY_ID(id)}`
     );
-    return response.project;
+    // Handle both response formats: { data: {...} } or { project: {...} }
+    if (!response.data && !response.project) {
+      throw new Error('Project not found');
+    }
+    return (response.data || response.project)!;
   }
 
   /**
@@ -45,7 +50,7 @@ export class ProjectsService {
     const response = await HttpClient.get<ProjectsResponse>(
       `${this.baseUrl}${API_ENDPOINTS.PROJECTS.GET_BY_COLONIA(colonia)}`
     );
-    return response.projects || [];
+    return response.data || response.projects || [];
   }
 
   /**
@@ -55,7 +60,7 @@ export class ProjectsService {
     const response = await HttpClient.get<ProjectsResponse>(
       `${this.baseUrl}${API_ENDPOINTS.PROJECTS.GET_BY_STATUS(status)}`
     );
-    return response.projects || [];
+    return response.data || response.projects || [];
   }
 
   /**
@@ -65,7 +70,7 @@ export class ProjectsService {
     const response = await HttpClient.get<ProjectsResponse>(
       `${this.baseUrl}${API_ENDPOINTS.PROJECTS.GET_BY_PROPOSER(userId)}`
     );
-    return response.projects || [];
+    return response.data || response.projects || [];
   }
 
   /**
@@ -76,7 +81,10 @@ export class ProjectsService {
       `${this.baseUrl}${API_ENDPOINTS.PROJECTS.CREATE}`,
       data
     );
-    return response.project;
+    if (!response.data && !response.project) {
+      throw new Error('Failed to create project');
+    }
+    return (response.data || response.project)!;
   }
 
   /**
@@ -87,7 +95,10 @@ export class ProjectsService {
       `${this.baseUrl}${API_ENDPOINTS.PROJECTS.UPDATE(id)}`,
       data
     );
-    return response.project;
+    if (!response.data && !response.project) {
+      throw new Error('Failed to update project');
+    }
+    return (response.data || response.project)!;
   }
 
   /**
@@ -116,7 +127,10 @@ export class ProjectsService {
       `${this.baseUrl}${API_ENDPOINTS.PROJECTS.ADD_VOTE(id)}`,
       data
     );
-    return response.project;
+    if (!response.data && !response.project) {
+      throw new Error('Failed to add vote');
+    }
+    return (response.data || response.project)!;
   }
 
   /**
@@ -127,7 +141,10 @@ export class ProjectsService {
       `${this.baseUrl}${API_ENDPOINTS.PROJECTS.ADD_FUNDING(id)}`,
       data
     );
-    return response.project;
+    if (!response.data && !response.project) {
+      throw new Error('Failed to add funding');
+    }
+    return (response.data || response.project)!;
   }
 
   /**
@@ -138,6 +155,9 @@ export class ProjectsService {
       `${this.baseUrl}${API_ENDPOINTS.PROJECTS.ADD_FEED(id)}`,
       data
     );
-    return response.project;
+    if (!response.data && !response.project) {
+      throw new Error('Failed to add feed item');
+    }
+    return (response.data || response.project)!;
   }
 }
