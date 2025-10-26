@@ -39,13 +39,43 @@ export class AuthService {
   static async loginWithBiometric(
     data: LoginWithBiometricRequest
   ): Promise<LoginResponse> {
+    console.log('📸 Preparing biometric login request:', {
+      email: data.email,
+      deviceId: data.deviceId,
+      deviceName: data.deviceName,
+      hasSelfie: !!data.selfie,
+      hasIne: !!data.ine,
+      selfieUri: (data.selfie as any)?.uri,
+      ineUri: (data.ine as any)?.uri,
+    });
+
     const formData = new FormData();
     formData.append('email', data.email);
     formData.append('password', data.password);
     formData.append('deviceId', data.deviceId);
     formData.append('deviceName', data.deviceName);
-    formData.append('selfie', data.selfie as any);
-    formData.append('ine', data.ine as any);
+    
+    // For React Native, we need to use the image URI format
+    // expo-image-picker returns { uri, type, name } format
+    formData.append('selfie', {
+      uri: (data.selfie as any).uri || data.selfie,
+      type: 'image/jpeg',
+      name: 'selfie.jpg',
+    } as any);
+    
+    formData.append('ine', {
+      uri: (data.ine as any).uri || data.ine,
+      type: 'image/jpeg',
+      name: 'ine.jpg',
+    } as any);
+
+    console.log('📤 Sending FormData with fields:', {
+      email: data.email,
+      deviceId: data.deviceId,
+      deviceName: data.deviceName,
+      selfie: 'selfie.jpg',
+      ine: 'ine.jpg',
+    });
 
     const response = await HttpClient.uploadFormData<LoginResponse>(
       `${this.baseUrl}${API_ENDPOINTS.AUTH.LOGIN}`,

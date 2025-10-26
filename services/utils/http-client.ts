@@ -111,13 +111,32 @@ export class HttpClient {
       headers['Authorization'] = `Bearer ${this.authToken}`;
     }
 
+    // Debug logging
+    console.log('🌐 HTTP Request:', {
+      method: config.method || 'GET',
+      url,
+      hasAuth: !!this.authToken,
+    });
+
     const response = await this.fetchWithRetry(url, {
       ...config,
       headers,
     });
 
+    console.log('📡 HTTP Response:', {
+      status: response.status,
+      statusText: response.statusText,
+      url,
+    });
+
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      console.error('❌ HTTP Error:', {
+        status: response.status,
+        statusText: response.statusText,
+        url,
+        errorData,
+      });
       throw new HttpError(response.status, response.statusText, errorData);
     }
 
@@ -185,6 +204,12 @@ export class HttpClient {
     // Don't set Content-Type for FormData - browser will set it with boundary
     delete headers['Content-Type'];
 
+    // Debug logging
+    console.log('📤 Upload Request:', {
+      url,
+      hasAuth: !!this.authToken,
+    });
+
     const response = await this.fetchWithRetry(url, {
       ...config,
       method: 'POST',
@@ -192,8 +217,20 @@ export class HttpClient {
       body: formData,
     });
 
+    console.log('📥 Upload Response:', {
+      status: response.status,
+      statusText: response.statusText,
+      url,
+    });
+
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      console.error('❌ Upload Error:', {
+        status: response.status,
+        statusText: response.statusText,
+        url,
+        errorData,
+      });
       throw new HttpError(response.status, response.statusText, errorData);
     }
 

@@ -9,16 +9,33 @@ export interface LoginRequest {
   deviceName: string;
 }
 
+// Image type for React Native (expo-image-picker format)
+export interface ImagePickerAsset {
+  uri: string;
+  type?: string;
+  name?: string;
+  width?: number;
+  height?: number;
+}
+
 export interface LoginWithBiometricRequest extends LoginRequest {
-  selfie: File | Blob;
-  ine: File | Blob;
+  selfie: File | Blob | ImagePickerAsset | any;
+  ine: File | Blob | ImagePickerAsset | any;
 }
 
 export interface LoginResponse {
-  success: boolean;
+  success?: boolean; // Optional because backend doesn't always send it
   token: string;
   user: User;
   message?: string;
+  isNewDevice?: boolean;
+  biometricVerification?: {
+    verified: boolean;
+    score: number;
+    cosine_similarity: number;
+    model: string;
+    timestamp: string;
+  };
 }
 
 export interface User {

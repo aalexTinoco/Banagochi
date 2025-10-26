@@ -2,13 +2,26 @@
  * API Configuration
  */
 
+// Cambiar a true para usar localhost en desarrollo
+const USE_LOCALHOST = false;
+
 export const API_CONFIG = {
-  USERS_BASE_URL: process.env.EXPO_PUBLIC_USERS_API_URL || 'http://localhost:4000',
-  OPERATIONAL_BASE_URL: process.env.EXPO_PUBLIC_OPERATIONAL_API_URL || 'http://localhost:4001',
+  USERS_BASE_URL: USE_LOCALHOST 
+    ? 'http://localhost:4000' 
+    : 'https://user-microservice-production-8438.up.railway.app',
+  OPERATIONAL_BASE_URL: USE_LOCALHOST 
+    ? 'http://localhost:4001' 
+    : 'https://banagochi-back-production.up.railway.app',
   TIMEOUT: 30000, // 30 seconds
   RETRY_ATTEMPTS: 3,
   RETRY_DELAY: 1000, // 1 second
 };
+
+console.log('🔧 API Config:', {
+  users: API_CONFIG.USERS_BASE_URL,
+  operational: API_CONFIG.OPERATIONAL_BASE_URL,
+  mode: USE_LOCALHOST ? 'LOCALHOST' : 'PRODUCTION',
+});
 
 export const API_ENDPOINTS = {
   // Authentication
