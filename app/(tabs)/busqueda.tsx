@@ -3,9 +3,11 @@ import CreateProjectModal from '@/components/create-project-modal';
 import Header from '@/components/header';
 import SearchBar from '@/components/search-bar';
 import { GRAY, RED, WHITE } from '@/css/globalcss';
+import { ProjectsService } from '@/services/api';
+import type { Project as APIProject } from '@/services/types/projects.types';
 import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
-import { Alert, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator } from 'react-native';
 
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     function formatDateLabel(d?: string) {
   if (!d) return '';
@@ -22,18 +24,54 @@ export default function BusquedaScreen() {
 
   const [query, setQuery] = useState('');
   const [projects, addProject] = useProjects();
+  const [apiProjects, setApiProjects] = useState<APIProject[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // search active projects (donated < goal)
-  const activeProjects = useMemo(() => projects.filter(p => p.donated < p.goal), [projects]);
+  // Fetch projects from API on mount
+  useEffect(() => {
+    loadProjects();
+  }, []);
+
+  async function loadProjects() {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      console.log('📥 Fetching projects from API...');
+      const data = await ProjectsService.getAll();
+      console.log('✅ Projects loaded:', data.length);
+      
+      setApiProjects(data);
+    } catch (err: any) {
+      console.error('❌ Error loading projects:', err);
+      setError('No se pudieron cargar los proyectos');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Search active projects (currentAmount < fundingGoal and status = FUNDING or VOTING)
+  const activeProjects = useMemo(() => {
+    return apiProjects.filter(p => 
+      p.active && 
+      p.currentAmount < p.fundingGoal &&
+      (p.status === 'FUNDING' || p.status === 'VOTING')
+    );
+  }, [apiProjects]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return activeProjects;
-    return activeProjects.filter(p => p.title.toLowerCase().includes(q) || (p.role || '').toLowerCase().includes(q));
+    return activeProjects.filter(p => 
+      p.title.toLowerCase().includes(q) || 
+      p.colonia.toLowerCase().includes(q) ||
+      p.description.toLowerCase().includes(q)
+    );
   }, [query, activeProjects]);
 
   const [suggModalVisible, setSuggModalVisible] = useState(false);
-  const [selected, setSelected] = useState<Project | null>(null);
+  const [selected, setSelected] = useState<APIProject | null>(null);
   const [createVisible, setCreateVisible] = useState(false);
   const [cardImage, setCardImage] = useState<any>(require('@/assets/images/Banorte-TDC-Basica-.avif'));
 
@@ -41,16 +79,16 @@ export default function BusquedaScreen() {
   const [newTitle, setNewTitle] = useState('');
   const [newGoal, setNewGoal] = useState('10000');
 
-  const openSuggestions = (p: Project) => {
+  const openSuggestions = (p: APIProject) => {
     setSelected(p);
     setSuggModalVisible(true);
   };
 
-  const startCreateFor = (p?: Project) => {
+  const startCreateFor = (p?: APIProject) => {
     // prefill title/desc when coming from a suggestion and set image if available
     if (p) {
       setNewTitle(p.title + ' — campaña comunitaria');
-      if ((p as any).image) setCardImage((p as any).image);
+      if (p.coverImage) setCardImage({ uri: p.coverImage });
     }
     setSuggModalVisible(false);
     setCreateVisible(true);
@@ -59,15 +97,54 @@ export default function BusquedaScreen() {
   // createProject handled by CreateProjectModal via onCreate
 
   // Build dynamic reasons/suggestions for a selected project
-  const buildReasons = (p?: Project | null) => {
+  const buildReasons = (p?: APIProject | null) => {
     if (!p) return [] as string[];
     const reasons: string[] = [];
-    reasons.push(`Impacto local: "${p.title}" mejora la calidad de vida en tu comunidad.`);
-    reasons.push(p.goal > 10000 ? 'Alto potencial de impacto si se alcanza la meta.' : 'Meta alcanzable con microdonaciones regulares.');
+    reasons.push(`Impacto local: "${p.title}" mejora la calidad de vida en ${p.colonia}.`);
+    reasons.push(p.fundingGoal > 10000 ? 'Alto potencial de impacto si se alcanza la meta.' : 'Meta alcanzable con microdonaciones regulares.');
     reasons.push('Permite visibilidad para quienes quieran colaborar y voluntariados locales.');
     reasons.push('Crear este proyecto puede atraer patrocinadores y apoyo institucional.');
     return reasons;
   };
+
+  // Helper function to get status label
+  const getStatusLabel = (status: string) => {
+    const labels: Record<string, string> = {
+      'VOTING': 'En votación',
+      'FUNDING': 'Recaudando fondos',
+      'IN_PROGRESS': 'En progreso',
+      'COMPLETED': 'Completado',
+      'REJECTED': 'Rechazado',
+    };
+    return labels[status] || status;
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <Header showBack={false} rightIconName="log-out-outline" onRightPress={() => router.replace('/')} rightAccessibilityLabel="Cerrar sesión" />
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={RED} />
+          <Text style={{ marginTop: 16, color: GRAY }}>Cargando proyectos...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.container}>
+        <Header showBack={false} rightIconName="log-out-outline" onRightPress={() => router.replace('/')} rightAccessibilityLabel="Cerrar sesión" />
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <Text style={{ color: RED, fontSize: 16, fontWeight: '700', marginBottom: 12 }}>Error</Text>
+          <Text style={{ color: GRAY, textAlign: 'center', marginBottom: 20 }}>{error}</Text>
+          <TouchableOpacity style={[styles.button, { backgroundColor: RED }]} onPress={loadProjects}>
+            <Text style={{ color: '#fff', fontWeight: '800' }}>Reintentar</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -81,11 +158,15 @@ export default function BusquedaScreen() {
 
       <ScrollView style={{ flex: 1, paddingHorizontal: 16 }} contentContainerStyle={{ paddingBottom: 80 }}>
         {filtered.map(p => (
-          <TouchableOpacity key={p.id} style={styles.resultCard} onPress={() => openSuggestions(p)} activeOpacity={0.9}>
+          <TouchableOpacity key={p._id} style={styles.resultCard} onPress={() => openSuggestions(p)} activeOpacity={0.9}>
             <View style={{ flex: 1 }}>
               <Text style={styles.resultTitle}>{p.title}</Text>
-              <Text style={styles.resultSub}>{p.role} • Recaudado ${p.donated.toLocaleString()} / ${p.goal.toLocaleString()}</Text>
-              <Text style={styles.resultDate}>{(p.recentMovements?.[0]?.date) ? formatDateLabel(p.recentMovements?.[0]?.date) : ''}</Text>
+              <Text style={styles.resultSub}>
+                {getStatusLabel(p.status)} • {p.colonia} • Recaudado ${p.currentAmount.toLocaleString()} / ${p.fundingGoal.toLocaleString()}
+              </Text>
+              <Text style={styles.resultDate}>
+                {p.creationDate ? formatDateLabel(p.creationDate.split('T')[0]) : ''}
+              </Text>
             </View>
             <View style={styles.actionColumn}>
               <TouchableOpacity style={styles.ghostButton} onPress={() => openSuggestions(p)}>
@@ -114,7 +195,10 @@ export default function BusquedaScreen() {
           <Header showBack={true} onBack={() => setSuggModalVisible(false)} rightIconName="close" onRightPress={() => setSuggModalVisible(false)} />
           <ScrollView contentContainerStyle={{ padding: 16 }}>
             <Text style={{ fontSize: 18, fontWeight: '800', color: GRAY, marginBottom: 8 }}>{selected?.title}</Text>
-            <Text style={{ color: '#6b7280', marginBottom: 12 }}>{selected?.role} • Meta ${selected?.goal?.toLocaleString()}</Text>
+            <Text style={{ color: '#6b7280', marginBottom: 12 }}>
+              {selected && getStatusLabel(selected.status)} • {selected?.colonia} • Meta ${selected?.fundingGoal?.toLocaleString()}
+            </Text>
+            <Text style={{ color: '#374151', marginBottom: 16 }}>{selected?.description}</Text>
 
             <Text style={{ fontWeight: '800', marginBottom: 8 }}>¿Por qué crear o apoyar este proyecto?</Text>
             {buildReasons(selected).map((r, i) => (
@@ -127,7 +211,7 @@ export default function BusquedaScreen() {
               <TouchableOpacity style={[styles.button, { backgroundColor: '#fff', borderWidth: 1, borderColor: '#eef2f6', marginRight: 8 }]} onPress={() => setSuggModalVisible(false)}>
                 <Text style={{ color: GRAY }}>Cancelar</Text>
               </TouchableOpacity>
-              {selected && selected.donated >= (selected.goal || 0) ? (
+              {selected && selected.currentAmount >= selected.fundingGoal ? (
                 <View style={[styles.button, { backgroundColor: '#f3f4f6', alignItems: 'center', justifyContent: 'center' }]}>
                   <Text style={{ color: '#6b7280', fontWeight: '700' }}>Proyecto completado</Text>
                 </View>

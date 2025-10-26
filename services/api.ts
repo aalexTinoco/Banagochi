@@ -30,7 +30,7 @@ export {
   UserService,
   CardService,
   MenuService,
-  ProjectService,
+  ProjectsService,
   AsideService,
   TransactionService,
 } from './modules';
@@ -51,7 +51,7 @@ import { AuthService } from './modules/auth.service';
 import { UserService } from './modules/user.service';
 import { CardService } from './modules/card.service';
 import { MenuService } from './modules/menu.service';
-import { ProjectService } from './modules/project.service';
+import { ProjectsService } from './modules/projects.service';
 import { AsideService } from './modules/aside.service';
 import { TransactionService } from './modules/transaction.service';
 
@@ -60,7 +60,7 @@ export const API = {
   users: UserService,
   cards: CardService,
   menus: MenuService,
-  projects: ProjectService,
+  projects: ProjectsService,
   asides: AsideService,
   transactions: TransactionService,
 };

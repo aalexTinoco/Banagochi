@@ -3,38 +3,208 @@ import Header from '@/components/header';
 import { GRAY, LIGHT_GRAY, RED, WHITE } from '@/css/globalcss';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
-import React from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator, RefreshControl } from 'react-native';
+import { useUser } from '@/app/state/user-store';
+import { clearUser } from '@/app/state/user-store';
+import { API, type CreditCard, type Project, type Transaction } from '@/services/api';
 
 
 // CardCarousel was moved to components/card-carousel.tsx
 
 export default function HomeScreen() {
   const router = useRouter();
+  const user = useUser();
+  
+  // State
+  const [cards, setCards] = useState<any[]>([]);
+  const [projects, setProjects] = useState<any[]>([]);
+  const [recentActivity, setRecentActivity] = useState<any[]>([]);
+  const [completedProjects, setCompletedProjects] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // Example/mock user data. In real usage pass this from your auth/user context.
-  const userName = 'Alejandro';
-  const cards = [
-    { id: 'mujer', last4: '4321', type: 'Banorte Mujer', balance: 2540.32, currency: 'MXN', color: '#1E2A3A', image: require('@/assets/images/Banorte_Mujer.png') },
-    { id: 'clasica', last4: '9876', type: 'Banorte TDC Clásica', balance: 12000.0, currency: 'MXN', color: '#1E2A3A', image: require('@/assets/images/Banorte-TDC-Clasica.avif') },
-    { id: 'oro', last4: '5566', type: 'Banorte TDC Oro', balance: 320.5, currency: 'MXN', color: '#1E2A3A', image: require('@/assets/images/Banorte-TDC-Oro.avif') },
-  ];
+  // Load data from API
+  const loadData = async () => {
+    if (!user?.id) return;
+    
+    try {
+      // Cargar tarjetas del usuario
+      const cardsResponse = await API.cards.getUserCards(user.id);
+      if (cardsResponse.cards && cardsResponse.cards.length > 0) {
+        const formattedCards = cardsResponse.cards.map((card: CreditCard) => ({
+          id: card._id,
+          last4: card.cardNumber.slice(-4),
+          type: card.type === 'banortemujer' ? 'Banorte Mujer' : 
+                card.type === 'banorteclasica' ? 'Banorte TDC Clásica' : 
+                'Banorte TDC Oro',
+          balance: card.maxCredit - card.creditUsed,
+          currency: 'MXN',
+          color: '#1E2A3A',
+          image: card.type === 'banortemujer' 
+            ? require('@/assets/images/Banorte_Mujer.png')
+            : card.type === 'banorteclasica'
+            ? require('@/assets/images/Banorte-TDC-Clasica.avif')
+            : require('@/assets/images/Banorte-TDC-Oro.avif')
+        }));
+        setCards(formattedCards);
+      }
+
+      // Cargar proyectos del usuario
+      const userProjectsResponse = await API.projects.getByProposer(user.id);
+      
+      // Cargar transacciones del usuario para ver proyectos donde colabora
+      const transactionsResponse = await API.transactions.getUserTransactions(user.id);
+      
+      // Combinar proyectos donde es proposer con proyectos donde ha colaborado
+      const projectIds = new Set<string>();
+      const projectsData: any[] = [];
+      
+      // Proyectos donde es proposer
+      if (userProjectsResponse && userProjectsResponse.length > 0) {
+        userProjectsResponse.forEach((p: Project) => {
+          if (!projectIds.has(p._id)) {
+            projectIds.add(p._id);
+            projectsData.push({
+              id: p._id,
+              title: p.title,
+              role: 'Organizador',
+              progress: Math.round((p.currentAmount / p.fundingGoal) * 100),
+            });
+          }
+        });
+      }
+      
+      // Proyectos donde ha colaborado (de las transacciones)
+      if (transactionsResponse?.transactions) {
+        const collaboratedProjects = new Map<string, number>();
+        
+        transactionsResponse.transactions.forEach((t: Transaction) => {
+          if (t.projectId && !projectIds.has(t.projectId)) {
+            collaboratedProjects.set(t.projectId, (collaboratedProjects.get(t.projectId) || 0) + t.amount);
+          }
+        });
+        
+        // Cargar info completa de proyectos colaborados
+        for (const [projectId] of collaboratedProjects) {
+          try {
+            const project = await API.projects.getById(projectId);
+            if (!projectIds.has(project._id) && project.status !== 'COMPLETED') {
+              projectIds.add(project._id);
+              projectsData.push({
+                id: project._id,
+                title: project.title,
+                role: 'Colaborador',
+                progress: Math.round((project.currentAmount / project.fundingGoal) * 100),
+              });
+            }
+          } catch (error) {
+            console.error('Error loading collaborated project:', error);
+          }
+        }
+      }
+      
+      setProjects(projectsData.slice(0, 5)); // Mostrar máximo 5
+      
+      // Actividad reciente (transacciones recientes)
+      if (transactionsResponse?.transactions) {
+        const recent = transactionsResponse.transactions
+          .slice(0, 3)
+          .map((t: Transaction, idx: number) => {
+            // projectId es solo un string, necesitamos cargar el proyecto
+            const timeAgo = Math.floor((Date.now() - new Date(t.createdAt).getTime()) / (1000 * 60 * 60));
+            return {
+              id: `a${idx + 1}`,
+              text: `Tu donación de $${t.amount} a un proyecto`,
+              time: timeAgo < 24 ? `${timeAgo}h` : `${Math.floor(timeAgo / 24)}d`
+            };
+          });
+        setRecentActivity(recent);
+      }
+      
+      // Proyectos completados
+      const allProjects = await API.projects.getAll();
+      const completed = allProjects
+        .filter((p: Project) => p.status === 'COMPLETED' && transactionsResponse?.transactions?.some((t: Transaction) => {
+          return t.projectId === p._id;
+        }))
+        .map((p: Project) => ({
+          id: p._id,
+          title: p.title,
+          completedAt: p.updatedDate || p.creationDate,
+        }))
+        .slice(0, 3);
+      setCompletedProjects(completed);
+      
+    } catch (error) {
+      console.error('Error loading home data:', error);
+    } finally {
+      setIsLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      loadData();
+    }
+  }, [user]);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    loadData();
+  };
+
+  const handleLogout = async () => {
+    await clearUser();
+    router.replace('/');
+  };
+
+  if (!user) {
+    return (
+      <View style={styles.container}>
+        <Header onRightPress={() => router.replace('/')} showBack={false} rightIconName="log-out-outline" rightAccessibilityLabel="Cerrar sesión" />
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ color: GRAY }}>No hay sesión activa</Text>
+          <TouchableOpacity onPress={() => router.replace('/')} style={{ marginTop: 20 }}>
+            <Text style={{ color: RED, fontWeight: '700' }}>Ir a inicio</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <View style={styles.container}>
+        <Header onRightPress={handleLogout} showBack={false} rightIconName="log-out-outline" rightAccessibilityLabel="Cerrar sesión" />
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={RED} />
+          <Text style={{ marginTop: 16, color: GRAY }}>Cargando datos...</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      <Header onRightPress={() => router.replace('/')} showBack={false} rightIconName="log-out-outline" rightAccessibilityLabel="Cerrar sesión" />
+      <Header onRightPress={handleLogout} showBack={false} rightIconName="log-out-outline" rightAccessibilityLabel="Cerrar sesión" />
 
-      <ScrollView contentContainerStyle={styles.body}>
-        <CardCarousel name={userName} cards={cards} />
+      <ScrollView 
+        contentContainerStyle={styles.body}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={RED} />
+        }
+      >
+        <CardCarousel name={user.name} cards={cards.length > 0 ? cards : [
+          { id: 'default', last4: '****', type: 'Sin tarjetas', balance: 0, currency: 'MXN', color: '#1E2A3A', image: require('@/assets/images/Banorte_Mujer.png') }
+        ]} />
 
         {/* Sections below the carousel: project goals, recent movements, credit proposals, completed projects */}
         <View style={styles.sections}>
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Metas en proyectos</Text>
-            {[
-              { id: 'p1', title: 'Mejorar alumbrado público', progress: 62, role: 'Colaborador' },
-              { id: 'p2', title: 'Parque comunitario', progress: 28, role: 'Organizador' },
-            ].map(p => (
+            {projects.length > 0 ? projects.map(p => (
               <TouchableOpacity key={p.id} style={styles.itemCard} onPress={() => router.push(`/projects/${p.id}` as any)} activeOpacity={0.8}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.itemTitle}>{p.title}</Text>
@@ -45,43 +215,26 @@ export default function HomeScreen() {
                 </View>
                 <View style={styles.itemBadge}><Text style={styles.itemBadgeText}>{p.progress}%</Text></View>
               </TouchableOpacity>
-            ))}
+            )) : (
+              <Text style={styles.emptyText}>No tienes proyectos activos</Text>
+            )}
           </View>
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Movimientos recientes</Text>
-            {[{
-              id: 'a1', text: 'Tu donación de $150 a Parque comunitario', time: '2h'
-            }, {
-              id: 'a2', text: 'María comentó en Mejorar alumbrado público', time: '5h'
-            }, {
-              id: 'a3', text: 'Se ha aprobado el presupuesto inicial para Parq. comunitario', time: '1d'
-            }].map(a => (
+            {recentActivity.length > 0 ? recentActivity.map(a => (
               <View key={a.id} style={styles.activityRow}>
                 <Text style={styles.activityText}>{a.text}</Text>
                 <Text style={styles.activityTime}>{a.time}</Text>
               </View>
-            ))}
-          </View>
-
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Propuestas de crédito y financiación</Text>
-            {[{ id: 'c1', title: 'Microcrédito para emprendedores', amount: 50000, status: 'En revisión' }].map(c => (
-              <View key={c.id} style={styles.itemCard}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.itemTitle}>{c.title}</Text>
-                  <Text style={styles.itemSubtitle}>${c.amount.toLocaleString()} • {c.status}</Text>
-                </View>
-                <TouchableOpacity style={styles.smallButton} onPress={() => router.push(`/credit/${c.id}` as any)}>
-                  <Text style={styles.smallButtonText}>Ver</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
+            )) : (
+              <Text style={styles.emptyText}>No hay actividad reciente</Text>
+            )}
           </View>
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Proyectos completados</Text>
-            {[{ id: 'f1', title: 'Reciclaje vecinal', completedAt: '2025-09-22' }].map(f => (
+            {completedProjects.length > 0 ? completedProjects.map(f => (
               <View key={f.id} style={styles.itemCard}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.itemTitle}>{f.title}</Text>
@@ -91,7 +244,9 @@ export default function HomeScreen() {
                   <Text style={styles.smallButtonText}>Ver</Text>
                 </TouchableOpacity>
               </View>
-            ))}
+            )) : (
+              <Text style={styles.emptyText}>Aún no has completado proyectos</Text>
+            )}
           </View>
         </View>
       </ScrollView>
@@ -218,6 +373,14 @@ const styles = StyleSheet.create({
   progressFill: {
     height: '100%',
     backgroundColor: RED,
+  },
+
+  emptyText: {
+    color: '#9aa0a6',
+    fontSize: 14,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 12,
   },
 
   // removed quick actions - keep styles minimal for mobile
