@@ -148,20 +148,30 @@ function formatDateLabel(d?: string) {
           maxCredit = 50000;
         }
         
+        // Calcular fecha de expiración (3 años desde ahora) en formato YYYY-MM
+        const expiryDate = new Date();
+        expiryDate.setFullYear(expiryDate.getFullYear() + 3);
+        const year = expiryDate.getFullYear();
+        const month = String(expiryDate.getMonth() + 1).padStart(2, '0');
+        const expiry = `${year}-${month}`;
+        
+        console.log('📝 Creando tarjeta al apoyar:', { userId: user.id, cardNumber, cardType, maxCredit, expiry });
+        
         // Crear la tarjeta vinculada al proyecto
-        await API.cards.createCard({
+        const cardResult = await API.cards.createCard({
           userId: user.id,
           cardNumber,
           holderName: user.name || 'Usuario',
-          expiry: new Date(Date.now() + 3 * 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 7), // 3 años
+          expiry,
           type: cardType,
           maxCredit,
           cutoffDay: 15,
         });
         
-        console.log('✅ Tarjeta creada automáticamente al apoyar el proyecto:', project._id);
-      } catch (cardError) {
+        console.log('✅ Tarjeta creada automáticamente al apoyar el proyecto:', cardResult);
+      } catch (cardError: any) {
         console.error('⚠️ Error creando tarjeta automática:', cardError);
+        console.error('⚠️ Detalle del error:', cardError?.response?.data || cardError?.message);
         // No bloqueamos el flujo si falla la creación de tarjeta
       }
 

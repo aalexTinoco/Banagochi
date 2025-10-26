@@ -40,8 +40,28 @@ export default function ProjectsScreen() {
   // Load projects from API
   const loadProjects = async () => {
     try {
-      const response = await API.projects.getAllProjects();
-      const allProjects = response.project ? [response.project] : [];
+      setIsLoading(true);
+      console.log('📥 Cargando proyectos activos...');
+      
+      const response: any = await API.projects.getAllProjects();
+      console.log('📦 Respuesta del API:', response);
+      
+      // Handle both array and object response formats
+      let allProjects: APIProject[] = [];
+      
+      if (Array.isArray(response)) {
+        allProjects = response;
+      } else if (response.project) {
+        // Single project wrapped in object
+        allProjects = [response.project];
+      } else if (response.projects) {
+        // Multiple projects in object
+        allProjects = response.projects;
+      } else if (response.data) {
+        allProjects = Array.isArray(response.data) ? response.data : [response.data];
+      }
+      
+      console.log('✅ Proyectos encontrados:', allProjects.length);
       
       // Transform API projects to UI format
       const uiProjects: UIProject[] = allProjects.map((p: APIProject) => ({
@@ -57,9 +77,10 @@ export default function ProjectsScreen() {
         recentMovements: [], // Se cargarían desde transacciones si es necesario
       }));
       
+      console.log('🎯 Proyectos UI formateados:', uiProjects.length);
       setProjects(uiProjects);
     } catch (error) {
-      console.error('Error loading projects:', error);
+      console.error('❌ Error loading projects:', error);
       Alert.alert('Error', 'No se pudieron cargar los proyectos');
     } finally {
       setIsLoading(false);

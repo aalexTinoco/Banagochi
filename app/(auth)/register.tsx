@@ -206,13 +206,10 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
             setRegistrationStatus('Procesando respuesta...');
 
             // Check various success conditions
-            const isSuccess = response.success === true || 
-                            response.success === 'true' || 
-                            !!response.user || 
-                            !!response.data?.user;
+            const isSuccess = response.success === true || !!response.user;
 
             if (isSuccess) {
-                const userData = response.user || response.data?.user;
+                const userData = response.user;
                 
                 setRegistrationStatus('¡Registro completado!');
                 
@@ -230,9 +227,8 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
                     ]
                 );
             } else {
-                const errorMsg = response.message || 
-                               response.error || 
-                               response.data?.message || 
+                const errorMsg = response.message || 'Error desconocido al registrar usuario';
+ 
                                'Error desconocido al registrar usuario';
                 
                 throw new Error(errorMsg);

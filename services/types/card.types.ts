@@ -6,17 +6,21 @@ export type CardType = 'banortemujer' | 'banorteclasica' | 'banorteoro';
 
 export interface CreditCard {
   _id: string;
-  userId: string;
-  cardNumber: string;
+  user?: string; // Backend usa 'user' en lugar de 'userId'
+  userId?: string; // Para compatibilidad
+  cardNumber?: string; // Opcional, ya que el backend puede no devolverlo
+  last4?: string; // Los últimos 4 dígitos de la tarjeta
   holderName: string;
   expiry: string;
   type: CardType;
+  linked?: boolean; // Backend agrega este campo
   maxCredit: number;
   creditUsed: number;
   cutoffDay: number;
   status: 'active' | 'blocked' | 'cancelled';
   createdAt: string;
-  updatedAt: string;
+  updatedAt?: string; // Opcional
+  __v?: number; // Campo de versión de MongoDB
 }
 
 export interface CreateCardRequest {

@@ -2,8 +2,8 @@ import CardCarousel from '@/components/card-carousel';
 import Header from '@/components/header';
 import { GRAY, LIGHT_GRAY, RED, WHITE } from '@/css/globalcss';
 import Constants from 'expo-constants';
-import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import { useRouter, useFocusEffect } from 'expo-router';
+import React, { useEffect, useState, useCallback } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator, RefreshControl } from 'react-native';
 import { useUser } from '@/app/state/user-store';
 import { clearUser } from '@/app/state/user-store';
@@ -31,10 +31,15 @@ export default function HomeScreen() {
     try {
       // Cargar tarjetas del usuario
       const cardsResponse = await API.cards.getUserCards(user.id);
-      if (cardsResponse.cards && cardsResponse.cards.length > 0) {
-        const formattedCards = cardsResponse.cards.map((card: CreditCard) => ({
+      console.log('📥 Tarjetas recibidas del servidor:', cardsResponse);
+      
+      // El backend puede devolver un array directamente o un objeto con propiedad 'cards'
+      const cardsArray = Array.isArray(cardsResponse) ? cardsResponse : (cardsResponse.cards || []);
+      
+      if (cardsArray && cardsArray.length > 0) {
+        const formattedCards = cardsArray.map((card: any) => ({
           id: card._id,
-          last4: card.cardNumber.slice(-4),
+          last4: card.last4 || card.cardNumber?.slice(-4) || '****',
           type: card.type === 'banortemujer' ? 'Banorte Mujer' : 
                 card.type === 'banorteclasica' ? 'Banorte TDC Clásica' : 
                 'Banorte TDC Oro',
@@ -47,12 +52,29 @@ export default function HomeScreen() {
             ? require('@/assets/images/Banorte-TDC-Clasica.avif')
             : require('@/assets/images/Banorte-TDC-Oro.avif')
         }));
+        
+        console.log('✅ Tarjetas formateadas:', formattedCards);
         setCards(formattedCards);
+      } else {
+        console.log('⚠️ No hay tarjetas disponibles');
+        setCards([]);
       }
 
       // Cargar proyectos del usuario
-      const userProjectsRes = await API.projects.getProjectsByProposer(user.id);
-      const userProjectsResponse = userProjectsRes.project ? [userProjectsRes.project] : [];
+      const userProjectsRes: any = await API.projects.getProjectsByProposer(user.id);
+      let userProjectsResponse: Project[] = [];
+      
+      if (Array.isArray(userProjectsRes)) {
+        userProjectsResponse = userProjectsRes;
+      } else if (userProjectsRes.project) {
+        userProjectsResponse = [userProjectsRes.project];
+      } else if (userProjectsRes.projects) {
+        userProjectsResponse = userProjectsRes.projects;
+      } else if (userProjectsRes.data) {
+        userProjectsResponse = Array.isArray(userProjectsRes.data) ? userProjectsRes.data : [userProjectsRes.data];
+      }
+      
+      console.log('📊 Proyectos del usuario:', userProjectsResponse.length);
       
       // Cargar transacciones del usuario para ver proyectos donde colabora
       const transactionsResponse = await API.transactions.getUserTransactions(user.id);
@@ -125,8 +147,19 @@ export default function HomeScreen() {
       }
       
       // Proyectos completados
-      const allProjectsRes = await API.projects.getAllProjects();
-      const allProjects = allProjectsRes.project ? [allProjectsRes.project] : [];
+      const allProjectsRes: any = await API.projects.getAllProjects();
+      let allProjects: Project[] = [];
+      
+      if (Array.isArray(allProjectsRes)) {
+        allProjects = allProjectsRes;
+      } else if (allProjectsRes.project) {
+        allProjects = [allProjectsRes.project];
+      } else if (allProjectsRes.projects) {
+        allProjects = allProjectsRes.projects;
+      } else if (allProjectsRes.data) {
+        allProjects = Array.isArray(allProjectsRes.data) ? allProjectsRes.data : [allProjectsRes.data];
+      }
+      
       const completed = allProjects
         .filter((p: Project) => p.status === 'COMPLETED' && transactionsResponse?.transactions?.some((t: Transaction) => {
           return t.projectId === p._id;
@@ -152,6 +185,15 @@ export default function HomeScreen() {
       loadData();
     }
   }, [user]);
+
+  // Recargar datos cuando la pantalla recibe el foco
+  useFocusEffect(
+    useCallback(() => {
+      if (user) {
+        loadData();
+      }
+    }, [user])
+  );
 
   const handleRefresh = () => {
     setRefreshing(true);

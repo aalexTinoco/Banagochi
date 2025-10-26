@@ -10,7 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { user } = useUser();
+  const user = useUser();
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -204,8 +204,8 @@ export default function SettingsScreen() {
             <ActivityIndicator color={RED} />
           ) : (
             devices.map((d) => (
-              <TouchableOpacity key={d.id} style={styles.row} onPress={() => handleLogoutDevice(d.id, d.name)}>
-                <Text style={styles.rowText}>{d.name}</Text>
+              <TouchableOpacity key={d.deviceId} style={styles.row} onPress={() => handleLogoutDevice(d.deviceId, d.deviceName)}>
+                <Text style={styles.rowText}>{d.deviceName}</Text>
                 <Ionicons name="log-out-outline" size={18} color={RED} />
               </TouchableOpacity>
             ))
