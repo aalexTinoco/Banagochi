@@ -1,9 +1,11 @@
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     import { Project, useProjects } from '@/app/state/projects-store';
+import CreateProjectModal from '@/components/create-project-modal';
 import Header from '@/components/header';
+import SearchBar from '@/components/search-bar';
 import { GRAY, RED, WHITE } from '@/css/globalcss';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
-import { Alert, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     function formatDateLabel(d?: string) {
   if (!d) return '';
@@ -37,7 +39,6 @@ export default function BusquedaScreen() {
 
   // create form state
   const [newTitle, setNewTitle] = useState('');
-  const [newDesc, setNewDesc] = useState('');
   const [newGoal, setNewGoal] = useState('10000');
 
   const openSuggestions = (p: Project) => {
@@ -49,23 +50,13 @@ export default function BusquedaScreen() {
     // prefill title/desc when coming from a suggestion and set image if available
     if (p) {
       setNewTitle(p.title + ' — campaña comunitaria');
-      setNewDesc(`Iniciativa basada en: ${p.title}`);
       if ((p as any).image) setCardImage((p as any).image);
     }
     setSuggModalVisible(false);
     setCreateVisible(true);
   };
 
-  const createProject = () => {
-    const id = `p_new_${Date.now()}`;
-    const goal = Math.max(1000, Number(newGoal) || 1000);
-    const newP: Project = { id, title: newTitle || 'Proyecto sin título', role: 'Organizador', donated: 0, goal, recentMovements: [], image: cardImage };
-    addProject(newP);
-    setCreateVisible(false);
-    setNewTitle(''); setNewDesc(''); setNewGoal('10000');
-    setCardImage(require('@/assets/images/Banorte-TDC-Basica-.avif'));
-    Alert.alert('Creado', 'Tu tarjeta del proyecto ha sido creada y añadida a proyectos activos.');
-  };
+  // createProject handled by CreateProjectModal via onCreate
 
   // Build dynamic reasons/suggestions for a selected project
   const buildReasons = (p?: Project | null) => {
@@ -84,7 +75,7 @@ export default function BusquedaScreen() {
 
       <View style={styles.searchArea}>
         <Text style={styles.title}>Buscar proyectos en tu comunidad</Text>
-        <TextInput placeholder="Buscar por título o categoría" value={query} onChangeText={setQuery} style={styles.input} />
+        <SearchBar value={query} onChange={setQuery} placeholder="Buscar por título o categoría" />
         <Text style={styles.hint}>Resultados: {filtered.length} proyecto(s) activos</Text>
       </View>
 
@@ -150,44 +141,20 @@ export default function BusquedaScreen() {
         </View>
       </Modal>
 
-      {/* Create project modal */}
-      <Modal visible={createVisible} animationType="slide" onRequestClose={() => setCreateVisible(false)}>
-        <View style={{ flex: 1, backgroundColor: '#fff' }}>
-          <Header showBack={true} onBack={() => setCreateVisible(false)} rightIconName="close" onRightPress={() => setCreateVisible(false)} />
-          <ScrollView contentContainerStyle={{ padding: 16 }}>
-            <Text style={{ fontSize: 18, fontWeight: '800', color: GRAY, marginBottom: 12 }}>Crear tarjeta de proyecto</Text>
-
-            <Text style={{ color: '#6b7280', marginBottom: 6 }}>Título</Text>
-            <TextInput value={newTitle} onChangeText={setNewTitle} placeholder="Ej. Jardín comunitario" style={styles.formInput} />
-
-            <Text style={{ color: '#6b7280', marginTop: 12, marginBottom: 6 }}>Descripción</Text>
-            <TextInput value={newDesc} onChangeText={setNewDesc} placeholder="¿Qué quieres lograr?" style={[styles.formInput, { height: 100 }]} multiline />
-
-            <Text style={{ color: '#6b7280', marginTop: 12, marginBottom: 6 }}>Meta (MXN)</Text>
-            <TextInput value={newGoal} onChangeText={setNewGoal} keyboardType="numeric" style={styles.formInput} />
-
-            <Text style={{ fontWeight: '800', marginTop: 16, marginBottom: 8 }}>Preview</Text>
-            <View style={{ backgroundColor: '#fff', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#f3f4f6' }}>
-              <Image source={cardImage} style={{ width: '100%', height: 140, borderRadius: 8, marginBottom: 12 }} resizeMode="cover" />
-              <Text style={{ fontWeight: '800', fontSize: 16, color: GRAY }}>{newTitle || 'Proyecto sin título'}</Text>
-              <Text style={{ color: '#6b7280', marginTop: 8 }}>{newDesc || 'Descripción breve...'}</Text>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 }}>
-                <Text style={{ color: '#6b7280' }}>Meta</Text>
-                <Text style={{ fontWeight: '800' }}>${Number(newGoal || 0).toLocaleString()}</Text>
-              </View>
-            </View>
-
-            <View style={{ flexDirection: 'row', marginTop: 18 }}>
-              <TouchableOpacity style={[styles.button, { backgroundColor: '#fff', borderWidth: 1, borderColor: '#eef2f6', marginRight: 8 }]} onPress={() => setCreateVisible(false)}>
-                <Text style={{ color: GRAY }}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.button, { backgroundColor: RED }]} onPress={createProject}>
-                <Text style={{ color: '#fff', fontWeight: '800' }}>Crear tarjeta</Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
-        </View>
-      </Modal>
+      {/* Create project modal (componentized) */}
+      <CreateProjectModal
+        visible={createVisible}
+        onClose={() => setCreateVisible(false)}
+        prefill={{ title: newTitle, goal: Number(newGoal) }}
+        initialImage={cardImage}
+        onCreate={(p) => {
+          addProject(p);
+          setCreateVisible(false);
+          setNewTitle(''); setNewGoal('10000');
+          setCardImage(require('@/assets/images/Banorte-TDC-Basica-.avif'));
+          Alert.alert('Creado', 'Tu tarjeta del proyecto ha sido creada y añadida a proyectos activos.');
+        }}
+      />
     </View>
   );
 }

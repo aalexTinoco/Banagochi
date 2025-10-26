@@ -1,8 +1,9 @@
 import Header from '@/components/header';
+import ProfileCard from '@/components/profile-card';
 import { GRAY, LIGHT_GRAY, RED, WHITE } from '@/css/globalcss';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -22,11 +23,7 @@ export default function SettingsScreen() {
       <Header showBack={false} onRightPress={() => {}} rightIconName="log-out-outline" />
 
       <ScrollView contentContainerStyle={styles.body}>
-        <View style={styles.profileCard}>
-          <Image source={require('@/assets/images/header-logo.png')} style={styles.profileImage} />
-          <Text style={styles.profileName}>Alejandro</Text>
-          <Text style={styles.profileEmail}>alejandro@example.com</Text>
-        </View>
+        <ProfileCard name="Alejandro" email="alejandro@example.com" />
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Cuenta</Text>

@@ -1,136 +1,20 @@
+import CardCarousel from '@/components/card-carousel';
 import Header from '@/components/header';
 import { GRAY, LIGHT_GRAY, RED, WHITE } from '@/css/globalcss';
-import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { Dimensions, ImageBackground, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 
-type CardInfo = {
-  id: string;
-  last4: string;
-  type: string;
-  balance: number;
-  currency?: string;
-  color?: string;
-  image?: any;
-};
-
-function CardCarousel({ name, cards }: { name: string; cards: CardInfo[] }) {
-  const [index, setIndex] = useState(0);
-  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
-  const width = Math.min(Dimensions.get('window').width - 48, 380);
-
-  const isLocked = selectedCardId !== null; // when a card is selected, lock carousel
-
-  const currentCard = cards[index];
-
-  const handleAction = () => {
-    if (!currentCard) return;
-    if (selectedCardId === currentCard.id) {
-      // currently selected: allow changing (unlock)
-      setSelectedCardId(null);
-      return;
-    }
-    // select this card and lock carousel
-    setSelectedCardId(currentCard.id);
-  };
-
-  return (
-    <View style={styles.carouselContainer}>
-      <Text style={styles.welcome}>Hola, <Text style={{ fontWeight: '800' }}>{name}</Text></Text>
-      <Text style={styles.subtitle}>Selecciona una tarjeta para usar</Text>
-
-      <ScrollView
-        horizontal
-        pagingEnabled
-        snapToAlignment="center"
-        contentContainerStyle={{ paddingHorizontal: 12 }}
-        showsHorizontalScrollIndicator={false}
-        scrollEnabled={!isLocked}
-        onMomentumScrollEnd={(e) => {
-          const newIndex = Math.round(e.nativeEvent.contentOffset.x / (width + 16));
-          setIndex(newIndex);
-        }}
-      >
-        {cards.map((c, i) => {
-          const isSelected = selectedCardId === c.id;
-          const containerStyle = [styles.card, { width }];
-          if (c.image) {
-            return (
-              <ImageBackground key={c.id} source={c.image} style={containerStyle} imageStyle={{ borderRadius: 14 }}>
-                <View style={styles.cardOverlay}>
-                  <View style={styles.cardTopRow}>
-                    <Text style={styles.cardType}>{c.type}</Text>
-                    <Text style={styles.cardBalance}>{c.currency ?? 'MXN'} {c.balance.toFixed(2)}</Text>
-                  </View>
-                  <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                    <Text style={styles.cardNumber}>•••• •••• •••• {c.last4}</Text>
-                  </View>
-                  <View style={[styles.cardFooter, isSelected && styles.cardFooterSelected]}>
-                    {isSelected && (
-                      <View style={styles.selectedBadge}>
-                        <Ionicons name="checkmark-circle" size={20} color={WHITE} />
-                        <Text style={[styles.selectedBadgeText]}>Seleccionada</Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-              </ImageBackground>
-            );
-          }
-
-          return (
-            <View key={c.id} style={[...containerStyle, { backgroundColor: c.color ?? RED }]}> 
-              <View style={styles.cardTopRow}>
-                <Text style={styles.cardType}>{c.type}</Text>
-                <Text style={styles.cardBalance}>{c.currency ?? 'MXN'} {c.balance.toFixed(2)}</Text>
-              </View>
-              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                <Text style={styles.cardNumber}>•••• •••• •••• {c.last4}</Text>
-              </View>
-              <View style={[styles.cardFooter, isSelected && styles.cardFooterSelected]}>
-                {isSelected && (
-                  <View style={styles.selectedBadge}>
-                    <Ionicons name="checkmark-circle" size={20} color={WHITE} />
-                    <Text style={[styles.selectedBadgeText]}>Seleccionada</Text>
-                  </View>
-                )}
-              </View>
-            </View>
-          );
-        })}
-      </ScrollView>
-
-      <View style={styles.pager}> 
-        {cards.map((_, i) => (
-          <View key={i} style={[styles.dot, i === index && { backgroundColor: RED, width: 22 }]} />
-        ))}
-      </View>
-
-      {/* action button below the carousel */}
-      <View style={styles.actionWrapper}>
-        <TouchableOpacity
-          style={[styles.button, selectedCardId === currentCard?.id ? styles.primaryOutline : styles.primary]}
-          onPress={handleAction}
-          activeOpacity={0.85}
-        >
-          <Text style={[styles.buttonText, selectedCardId === currentCard?.id ? styles.primaryOutlineText : styles.primaryText]}>
-            {selectedCardId === currentCard?.id ? 'Cambiar tarjeta' : 'Usar esta tarjeta'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
+// CardCarousel was moved to components/card-carousel.tsx
 
 export default function HomeScreen() {
   const router = useRouter();
 
   // Example/mock user data. In real usage pass this from your auth/user context.
   const userName = 'Alejandro';
-  const cards: CardInfo[] = [
+  const cards = [
     { id: 'mujer', last4: '4321', type: 'Banorte Mujer', balance: 2540.32, currency: 'MXN', color: '#1E2A3A', image: require('@/assets/images/Banorte_Mujer.png') },
     { id: 'clasica', last4: '9876', type: 'Banorte TDC Clásica', balance: 12000.0, currency: 'MXN', color: '#1E2A3A', image: require('@/assets/images/Banorte-TDC-Clasica.avif') },
     { id: 'oro', last4: '5566', type: 'Banorte TDC Oro', balance: 320.5, currency: 'MXN', color: '#1E2A3A', image: require('@/assets/images/Banorte-TDC-Oro.avif') },

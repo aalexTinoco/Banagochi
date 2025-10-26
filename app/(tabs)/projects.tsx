@@ -1,22 +1,13 @@
 import { Project, useProjects } from '@/app/state/projects-store';
 import Header from '@/components/header';
+import ProjectCard from '@/components/project-card';
+import ProjectModal from '@/components/project-modal';
 import { GRAY, LIGHT_GRAY, RED, WHITE } from '@/css/globalcss';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
-import { Dimensions, Image, ImageBackground, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 
-// Se elimina el componente PieChart.
-
-// Format ISO date (YYYY-MM-DD) into Spanish human readable form: "24 de octubre 2025"
-function formatDateLabel(d?: string) {
-  if (!d) return '';
-  const isoMatch = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(d);
-  if (!isoMatch) return d;
-  const [, year, mm, dd] = isoMatch;
-  const months = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-  const month = months[Number(mm) - 1] || mm;
-  return `${Number(dd)} de ${month} ${year}`;
-}
+// PieChart removed; modal rendering moved to component
 
 
 export default function ProjectsScreen() {
@@ -62,7 +53,7 @@ export default function ProjectsScreen() {
     return items;
   }, [projects, selected]);
 
-  const windowW = Dimensions.get('window').width;
+  const windowW = useWindowDimensions().width;
   const cardW = Math.min(windowW - 96, 320);
 
   const openProject = (p: Project) => {
@@ -77,22 +68,10 @@ export default function ProjectsScreen() {
       <ScrollView contentContainerStyle={styles.body}>
         <Text style={styles.sectionTitle}>Proyectos compartidos</Text>
 
-        {/* Carousel of shared image cards */}
+        {/* Carousel of shared image cards (componentized) */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingLeft: 16, paddingRight: 32 }}>
           {projects.map((p) => (
-            <TouchableOpacity key={p.id} style={[styles.shareCard, { width: cardW }]} activeOpacity={0.9} onPress={() => openProject(p)}>
-              <ImageBackground source={p.image ? p.image : require('@/assets/images/Banorte-TDC-Basica-.avif')} style={styles.cardImage} imageStyle={{ borderRadius: 12 }}>
-                <View style={styles.cardImageOverlay}>
-                  <Text style={styles.shareCardTitleWhite}>{p.title}</Text>
-                  <View style={styles.shareCardFooterRow}>
-                    <View style={styles.progressContainerSmallLight}>
-                      <View style={[styles.progressFillLight, { width: `${Math.round((p.donated / p.goal) * 100)}%` }]} />
-                    </View>
-                    <Text style={styles.smallMetaLight}>{`$${p.donated.toLocaleString()} de $${p.goal.toLocaleString()}`}</Text>
-                  </View>
-                </View>
-              </ImageBackground>
-            </TouchableOpacity>
+            <ProjectCard key={p.id} project={p} width={cardW} onPress={() => openProject(p)} />
           ))}
         </ScrollView>
 
@@ -119,103 +98,8 @@ export default function ProjectsScreen() {
         </View>
       </ScrollView>
 
-      {/* Modal showing project details (goal, donated, movements) */}
-      <Modal visible={modalVisible} animationType="slide" onRequestClose={() => setModalVisible(false)}>
-        <View style={styles.modalSafe}>
-          {/* Keep the Header inside modal so header persists */}
-          <Header showBack={true} onBack={() => setModalVisible(false)} onRightPress={() => setModalVisible(false)} rightIconName="close" />
-
-          <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
-            {/* Big image of the project */}
-            <Image source={selected?.image ? selected.image : require('@/assets/images/Banorte-TDC-Basica-.avif')} style={styles.modalImage} resizeMode="contain" />
-
-            {/* Always show Actions (Insights + Movements) — tabs removed per request */}
-            <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
-              <Text style={{ fontWeight: '800', color: GRAY, marginBottom: 8 }}>Insights</Text>
-
-              {/* Insights box: total, donors, avg, top donor */}
-              {selected && (() => {
-                const mv = selected.recentMovements ?? [];
-                const total = mv.reduce((s, x) => s + (x.amount || 0), 0);
-                const donors = Array.from(new Set(mv.map(x => x.name ?? 'Anónimo'))).length;
-                const avg = donors > 0 ? Math.round(total / donors) : 0;
-                const top = mv.slice().sort((a, b) => (b.amount || 0) - (a.amount || 0))[0];
-                return (
-                  <View style={{ backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 }}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-                      <View>
-                        <Text style={{ color: '#6b7280' }}>Total en periodo</Text>
-                        <Text style={{ fontWeight: '800', fontSize: 16 }}>${total.toLocaleString()}</Text>
-                      </View>
-                      <View>
-                        <Text style={{ color: '#6b7280' }}>Donantes</Text>
-                        <Text style={{ fontWeight: '800', fontSize: 16 }}>{donors}</Text>
-                      </View>
-                      <View>
-                        <Text style={{ color: '#6b7280' }}>Promedio</Text>
-                        <Text style={{ fontWeight: '800', fontSize: 16 }}>${avg.toLocaleString()}</Text>
-                      </View>
-                    </View>
-
-                    <View style={{ borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 8 }}>
-                      <Text style={{ color: '#6b7280', marginBottom: 6 }}>Mayor donación</Text>
-                      <Text style={{ fontWeight: '800' }}>{top ? `${top.name ?? 'Anónimo'} • $${(top.amount || 0).toLocaleString()}` : '—'}</Text>
-                    </View>
-                  </View>
-                );
-              })()}
-
-              <Text style={{ fontWeight: '800', color: GRAY, marginBottom: 8 }}>Movimientos</Text>
-                {(selected?.recentMovements ?? []).map((m) => (
-                <View key={m.id} style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f3f4f6', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <View>
-                    <Text style={{ color: GRAY, fontWeight: '700' }}>{m.name ?? 'Anónimo'}</Text>
-                    <Text style={{ color: '#6b7280', marginTop: 4 }}>{m.date ? formatDateLabel(m.date) : m.time}</Text>
-                  </View>
-                  <Text style={{ color: RED, fontWeight: '800' }}>{m.amount ? `$${m.amount.toLocaleString()}` : ''}</Text>
-                </View>
-              ))}
-            </View>
-
-            {/* Suggestion area below movements */}
-            <View style={{ paddingHorizontal: 16, marginTop: 18 }}>
-
-              {/* Insights derivados de los movimientos (etiqueta actualizada) */}
-              {selected && (() => {
-                const map: Record<string, number> = {};
-                (selected.recentMovements ?? []).forEach(m => {
-                  const day = m.date ?? m.time;
-                  map[day] = (map[day] || 0) + (m.amount || 0);
-                });
-                const buckets = Object.keys(map).sort().map(k => ({ label: k.replace(/2025-|-/g, ''), value: map[k] }));
-                const total = buckets.reduce((s, b) => s + b.value, 0);
-                const top = buckets.slice().sort((a, b) => b.value - a.value)[0];
-                const avg = buckets.length ? Math.round(total / buckets.length) : 0;
-                return (
-                  <View style={{ backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 }}>
-                    <Text style={{ fontWeight: '800', marginBottom: 8 }}>Insights de Movimientos Recientes</Text>
-                    <Text style={{ color: '#6b7280', marginBottom: 6 }}>Total en periodo: <Text style={{ fontWeight: '800' }}>${total.toLocaleString()}</Text></Text>
-                    <Text style={{ color: '#6b7280', marginBottom: 6 }}>Promedio diario (por fechas registradas): <Text style={{ fontWeight: '800' }}>${avg.toLocaleString()}</Text></Text>
-                    <Text style={{ color: '#6b7280', marginBottom: 6 }}>Día con más ingresos: <Text style={{ fontWeight: '800' }}>{top ? `${top.label} • $${top.value.toLocaleString()}` : '—'}</Text></Text>
-                    <View style={{ marginTop: 8 }}>
-                      <Text style={{ color: GRAY, fontWeight: '700', marginBottom: 6 }}>Sugerencias automáticas</Text>
-                      <Text style={{ color: '#374151', marginBottom: 4 }}>• Promociona el proyecto el día {top ? top.label : '—'} — fue el día con más ingresos.</Text>
-                      <Text style={{ color: '#374151', marginBottom: 4 }}>• Considera recordatorios los días con menor actividad para aumentar contribuciones.</Text>
-                      <Text style={{ color: '#374151' }}>• Ofrece incentivos (menciones o pequeños reconocimientos) para aumentar el monto promedio.</Text>
-                    </View>
-                  </View>
-                );
-              })()}
-
-              {suggestions.map((s: any) => (
-                <TouchableOpacity key={s.id} style={styles.suggestionRow} onPress={() => { /* simulate */ }}>
-                  <Text style={{ color: GRAY }}>{s.title}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
-        </View>
-      </Modal>
+      {/* Modal delegated to component */}
+      <ProjectModal project={selected} visible={modalVisible} onClose={() => setModalVisible(false)} />
     </View>
   );
 }

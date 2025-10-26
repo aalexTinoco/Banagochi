@@ -156,4 +156,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     letterSpacing: 1,
   },
+  buttonText: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
 });

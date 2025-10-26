@@ -1,13 +1,18 @@
+import ColoniaPicker from '@/components/colonia-picker';
+import DialogueBubble from '@/components/dialogue-bubble';
 import Header from '@/components/header';
+import OptionCard from '@/components/option-card';
+import PhotoCapture from '@/components/photo-capture';
+import ProgressBar from '@/components/progress-bar';
 import { GRAY, LIGHT_GRAY, RED, WHITE } from '@/css/globalcss';
 import Constants from 'expo-constants';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
     KeyboardAvoidingView,
-    Modal,
+
     Platform,
     ScrollView,
     StyleSheet,
@@ -24,55 +29,8 @@ const DIALOGUE_STEP_COUNT = 3;
 const REGISTER_FIELD_COUNT = 7;
 // window width not used currently
 
-const OptionCard = ({ text, isSelected, onPress }: { text: string; isSelected: boolean; onPress: () => void }) => (
-    <TouchableOpacity
-        style={[
-            onboardingStyles.optionCard,
-            isSelected && onboardingStyles.optionCardSelected
-        ]}
-        onPress={onPress}
-        activeOpacity={0.7}
-    >
-        <Text style={[
-            onboardingStyles.optionText,
-            isSelected && onboardingStyles.optionTextSelected
-        ]}>{text}</Text>
-    </TouchableOpacity>
-);
-
-const DialogueBubble = ({ dialogueText, onFinish }: { dialogueText: string; onFinish?: () => void }) => {
-    const [displayedText, setDisplayedText] = useState('');
-    const [isTyping, setIsTyping] = useState(true);
-
-    useEffect(() => {
-        setDisplayedText(''); 
-        setIsTyping(true);
-        const textLength = dialogueText.length;
-        let index = 0;
-
-        const interval = setInterval(() => {
-            if (index < textLength) {
-                setDisplayedText(prev => prev + dialogueText.charAt(index));
-                index++;
-            } else {
-                clearInterval(interval);
-                setIsTyping(false);
-                if (onFinish) onFinish();
-            }
-        }, 30); 
-
-        return () => clearInterval(interval);
-    }, [dialogueText, onFinish]);
-
-    return (
-        <View style={onboardingStyles.dialogContainer}>
-            <Image source={require('@/assets/images/maya.png')} style={onboardingStyles.maya} />
-            <View style={onboardingStyles.bubble}>
-                <Text style={onboardingStyles.bubbleText}>{displayedText}{isTyping ? '|' : ''}</Text>
-            </View>
-        </View>
-    );
-};
+// OptionCard, DialogueBubble, PhotoCapture, ColoniaPicker and ProgressBar
+// have been moved to `components/` and are imported above.
 
 export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () => void }) {
     const router = useRouter();
@@ -249,12 +207,7 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
                     rightAccessibilityLabel="Ir a login"
                 />
                 {isFormStep && (
-                    <View style={styles.progressBarContainer}>
-                        <View style={[
-                            styles.progressBar,
-                            { width: `${((step - DIALOGUE_STEP_COUNT) / REGISTER_FIELD_COUNT) * 100}%` }
-                        ]} />
-                    </View>
+                    <ProgressBar percent={((step - DIALOGUE_STEP_COUNT) / REGISTER_FIELD_COUNT) * 100} />
                 )}
                 <View style={onboardingStyles.contentCentered}>
                     <DialogueBubble 
@@ -293,12 +246,7 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
                     rightAccessibilityLabel="Ir a login"
                 />
                 {isFormStep && (
-                    <View style={styles.progressBarContainer}>
-                        <View style={[
-                            styles.progressBar,
-                            { width: `${((step - DIALOGUE_STEP_COUNT) / REGISTER_FIELD_COUNT) * 100}%` }
-                        ]} />
-                    </View>
+                    <ProgressBar percent={((step - DIALOGUE_STEP_COUNT) / REGISTER_FIELD_COUNT) * 100} />
                 )}
                 <View style={onboardingStyles.contentCentered}>
                     <View style={onboardingStyles.dialogContainer}>
@@ -394,18 +342,7 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
                                 )}
 
                                 {currentFormField.type === 'photo' && (
-                                    <View style={{ width: '100%', alignItems: 'center' }}>
-                                        {((formData as any)[inputKey]) ? (
-                                            <Image source={{ uri: (formData as any)[inputKey] }} style={{ width: 180, height: 180, borderRadius: 12, marginBottom: 12 }} />
-                                        ) : null}
-                                        <TouchableOpacity
-                                            style={[styles.button, { maxWidth: 240 }]}
-                                            onPress={() => pickPhotoFor(inputKey as any)}
-                                            activeOpacity={0.8}
-                                        >
-                                            <Text style={[styles.buttonText, styles.primaryGreenText]}>{((formData as any)[inputKey]) ? 'REPETIR FOTO' : 'TOMAR FOTO'}</Text>
-                                        </TouchableOpacity>
-                                    </View>
+                                    <PhotoCapture uri={(formData as any)[inputKey]} onTake={() => pickPhotoFor(inputKey as any)} />
                                 )}
 
                                 {currentFormField.type === 'select' && (
@@ -418,26 +355,7 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
                                             <Text style={styles.dropdownText}>{(formData as any).colonia || 'Selecciona tu colonia'}</Text>
                                         </TouchableOpacity>
 
-                                        <Modal visible={showColoniaPicker} animationType="slide" transparent>
-                                            <View style={styles.modalOverlay}>
-                                                <View style={styles.modalContent}>
-                                                    <ScrollView>
-                                                        {colonias.map(col => (
-                                                            <TouchableOpacity
-                                                                key={col}
-                                                                style={[styles.modalItem, (formData as any).colonia === col && onboardingStyles.optionCardSelected]}
-                                                                onPress={() => { setFormData(prev => ({ ...prev, colonia: col })); setFormError(''); setShowColoniaPicker(false); }}
-                                                            >
-                                                                <Text style={[styles.modalItemText, (formData as any).colonia === col && { color: RED }]}>{col}</Text>
-                                                            </TouchableOpacity>
-                                                        ))}
-                                                    </ScrollView>
-                                                    <TouchableOpacity style={styles.modalClose} onPress={() => setShowColoniaPicker(false)}>
-                                                        <Text style={{ color: GRAY }}>Cerrar</Text>
-                                                    </TouchableOpacity>
-                                                </View>
-                                            </View>
-                                        </Modal>
+                                        <ColoniaPicker visible={showColoniaPicker} colonias={colonias} selected={(formData as any).colonia} onSelect={(col) => { setFormData(prev => ({ ...prev, colonia: col })); setFormError(''); setShowColoniaPicker(false); }} onClose={() => setShowColoniaPicker(false)} />
                                     </View>
                                 )}
                             </Animated.View>
