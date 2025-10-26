@@ -40,7 +40,8 @@ export default function ProjectsScreen() {
   // Load projects from API
   const loadProjects = async () => {
     try {
-      const allProjects = await API.projects.getAll();
+      const response = await API.projects.getAllProjects();
+      const allProjects = response.project ? [response.project] : [];
       
       // Transform API projects to UI format
       const uiProjects: UIProject[] = allProjects.map((p: APIProject) => ({

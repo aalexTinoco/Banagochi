@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import React, { useState, useEffect } from 'react';
 import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator, Alert } from 'react-native';
 import { useUser, clearUser } from '@/app/state/user-store';
-import { API, type Device } from '@/services/api';
+import { API, type Device, type Project } from '@/services/api';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function SettingsScreen() {
@@ -41,7 +41,8 @@ export default function SettingsScreen() {
       setLoadingStats(true);
       
       // Get user's projects
-      const userProjects = await API.projects.getByProposer(user.id);
+      const userProjectsRes = await API.projects.getProjectsByProposer(user.id);
+      const userProjects = userProjectsRes.project ? [userProjectsRes.project] : [];
       
       // Get user's transactions to find participated projects
       const transactions = await API.transactions.getUserTransactions(user.id);
@@ -50,7 +51,7 @@ export default function SettingsScreen() {
       const activeProjectsIds = new Set<string>();
       
       // Add projects where user is proposer
-      userProjects.forEach(p => {
+      userProjects.forEach((p: Project) => {
         if (p.status !== 'COMPLETED') {
           activeProjectsIds.add(p._id);
         }
@@ -72,8 +73,9 @@ export default function SettingsScreen() {
         setCompletedCount(user.impactSummary.completedProjects);
       } else {
         // Count completed projects from transactions
-        const allProjects = await API.projects.getAll();
-        const completedProjects = allProjects.filter(p => 
+        const allProjectsRes = await API.projects.getAllProjects();
+        const allProjects = allProjectsRes.project ? [allProjectsRes.project] : [];
+        const completedProjects = allProjects.filter((p: Project) => 
           p.status === 'COMPLETED' && 
           transactions?.transactions?.some(t => t.projectId === p._id)
         );

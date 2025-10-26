@@ -40,7 +40,7 @@ import { StorageService } from './utils/storage';
 export {
   AsideService, AuthService, CardService,
   MenuService,
-  ProjectService, TransactionService, UserService
+  ProjectsService, TransactionService, UserService
 } from './modules';
 
 // Export types

@@ -51,7 +51,8 @@ export default function HomeScreen() {
       }
 
       // Cargar proyectos del usuario
-      const userProjectsResponse = await API.projects.getByProposer(user.id);
+      const userProjectsRes = await API.projects.getProjectsByProposer(user.id);
+      const userProjectsResponse = userProjectsRes.project ? [userProjectsRes.project] : [];
       
       // Cargar transacciones del usuario para ver proyectos donde colabora
       const transactionsResponse = await API.transactions.getUserTransactions(user.id);
@@ -88,8 +89,9 @@ export default function HomeScreen() {
         // Cargar info completa de proyectos colaborados
         for (const [projectId] of collaboratedProjects) {
           try {
-            const project = await API.projects.getById(projectId);
-            if (!projectIds.has(project._id) && project.status !== 'COMPLETED') {
+            const projectRes = await API.projects.getProjectById(projectId);
+            const project = projectRes.project;
+            if (project && !projectIds.has(project._id) && project.status !== 'COMPLETED') {
               projectIds.add(project._id);
               projectsData.push({
                 id: project._id,
@@ -123,7 +125,8 @@ export default function HomeScreen() {
       }
       
       // Proyectos completados
-      const allProjects = await API.projects.getAll();
+      const allProjectsRes = await API.projects.getAllProjects();
+      const allProjects = allProjectsRes.project ? [allProjectsRes.project] : [];
       const completed = allProjects
         .filter((p: Project) => p.status === 'COMPLETED' && transactionsResponse?.transactions?.some((t: Transaction) => {
           return t.projectId === p._id;

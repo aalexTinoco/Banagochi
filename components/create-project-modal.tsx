@@ -78,7 +78,7 @@ export default function CreateProjectModal({ visible, onClose, onProjectCreated 
     setIsSubmitting(true);
 
     try {
-      await API.projects.create({
+      await API.projects.createProject({
         title: title.trim(),
         description: description.trim(),
         colonia,
