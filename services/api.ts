@@ -25,14 +25,22 @@
  */
 
 // Export all services
+/**
+ * Unified API object for convenience
+ */
+import { AsideService } from './modules/aside.service';
+import { AuthService } from './modules/auth.service';
+import { CardService } from './modules/card.service';
+import { MenuService } from './modules/menu.service';
+import { ProjectService } from './modules/project.service';
+import { TransactionService } from './modules/transaction.service';
+import { UserService } from './modules/user.service';
+import { StorageService } from './utils/storage';
+
 export {
-  AuthService,
-  UserService,
-  CardService,
+  AsideService, AuthService, CardService,
   MenuService,
-  ProjectService,
-  AsideService,
-  TransactionService,
+  ProjectService, TransactionService, UserService
 } from './modules';
 
 // Export all types
@@ -44,16 +52,8 @@ export { API_CONFIG, API_ENDPOINTS } from './config/api.config';
 // Export HTTP client for custom requests if needed
 export { HttpClient, HttpError } from './utils/http-client';
 
-/**
- * Unified API object for convenience
- */
-import { AuthService } from './modules/auth.service';
-import { UserService } from './modules/user.service';
-import { CardService } from './modules/card.service';
-import { MenuService } from './modules/menu.service';
-import { ProjectService } from './modules/project.service';
-import { AsideService } from './modules/aside.service';
-import { TransactionService } from './modules/transaction.service';
+// Export storage service
+export { StorageService } from './utils/storage';
 
 export const API = {
   auth: AuthService,
@@ -63,6 +63,7 @@ export const API = {
   projects: ProjectService,
   asides: AsideService,
   transactions: TransactionService,
+  storage: StorageService,
 };
 
 /**

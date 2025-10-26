@@ -5,14 +5,16 @@ import OptionCard from '@/components/option-card';
 import PhotoCapture from '@/components/photo-capture';
 import ProgressBar from '@/components/progress-bar';
 import { GRAY, LIGHT_GRAY, RED, WHITE } from '@/css/globalcss';
+import { API } from '@/services/api';
 import Constants from 'expo-constants';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useRef, useState } from 'react';
 import {
+    ActivityIndicator,
+    Alert,
     KeyboardAvoidingView,
-
     Platform,
     ScrollView,
     StyleSheet,
@@ -25,9 +27,12 @@ import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 
 const DIALOGUE_STEP_COUNT = 3;
-// name, email, password, selfie, ine, postal, colonia
-const REGISTER_FIELD_COUNT = 7;
-// window width not used currently
+// name, email, password, selfie, ine, postal, colonia, calle, numero, referencia
+const REGISTER_FIELD_COUNT = 10;
+
+// Copomex API configuration
+const COPOMEX_TOKEN = '81eca954-2d49-45b7-8bde-756e397541cf';
+const COPOMEX_API_URL = 'https://api.copomex.com/query/get_colonia_por_cp';
 
 // OptionCard, DialogueBubble, PhotoCapture, ColoniaPicker and ProgressBar
 // have been moved to `components/` and are imported above.
@@ -37,16 +42,21 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
     const [step, setStep] = useState(0); 
     const [selectedMotivation, setSelectedMotivation] = useState<string | null>(null);
     const [formError, setFormError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
 
     const [formData, setFormData] = useState({
         name: '',
         email: '',
         password: '',
         // photo URIs
-        selfie: '' as string | null,
-        ine: '' as string | null,
+        selfie: null as string | null,
+        ine: null as string | null,
         postal: '',
         colonia: '',
+        // Address fields - will be concatenated before sending to backend
+        calle: '',
+        numero: '',
+        referencia: '',
         // user consent to fetch Banorte data via Open Banking
         allowOpenBanking: false,
     });
@@ -64,24 +74,123 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
 
             const res = await ImagePicker.launchCameraAsync({ quality: 0.7 });
             const uri = (res as any).assets?.[0]?.uri ?? (res as any).uri;
-            if (uri) setFormData(prev => ({ ...prev, [key]: uri } as any));
+            if (uri) setFormData(prev => ({ ...prev, [key]: uri }));
         } catch (e) {
             console.warn(e);
             setFormError('No se pudo tomar la foto');
         }
     }
 
-    // Mock function to fetch colonias from a postal code. Replace with real API.
+    // Real API call to fetch colonias from Copomex
     async function fetchColonias(postal: string) {
-        // simple validation
-        if (!postal || postal.length < 4) return [];
-        // mock data
-        const sample = {
-            '01000': ['Centro', 'La Villa', 'San Miguel'],
-            '10001': ['Colonia A', 'Colonia B', 'Colonia C'],
-        } as Record<string, string[]>;
+        // Validation
+        if (!postal || postal.length !== 5) {
+            return [];
+        }
 
-        return sample[postal] ?? ['Colonia Centro', 'Colonia Norte', 'Colonia Sur'];
+        setIsLoading(true);
+        try {
+            const response = await fetch(
+                `${COPOMEX_API_URL}/${postal}?token=${COPOMEX_TOKEN}`
+            );
+            
+            if (!response.ok) {
+                throw new Error('No se pudo obtener las colonias');
+            }
+
+            const data = await response.json();
+            
+            console.log('Copomex API Response:', data); // Debug log
+            
+            // Check if the response has the expected structure
+            if (data && !data.error && data.response && data.response.colonia) {
+                const coloniasArray = data.response.colonia;
+                
+                if (Array.isArray(coloniasArray) && coloniasArray.length > 0) {
+                    // Remove duplicates and filter out empty values
+                    return [...new Set(coloniasArray.filter(Boolean))] as string[];
+                }
+            }
+
+            return [];
+        } catch (error) {
+            console.error('Error fetching colonias:', error);
+            return [];
+        } finally {
+            setIsLoading(false);
+        }
+    }
+
+    // Register user with backend
+    async function registerUser() {
+        setIsLoading(true);
+        setFormError('');
+
+        try {
+            // Validate all required fields
+            if (!formData.name || !formData.email || !formData.password) {
+                throw new Error('Por favor completa todos los campos requeridos');
+            }
+
+            if (!formData.selfie || !formData.ine) {
+                throw new Error('Las fotos de verificación biométrica son requeridas');
+            }
+
+            if (!formData.colonia || !formData.calle || !formData.numero) {
+                throw new Error('Por favor completa tu dirección (calle y número son requeridos)');
+            }
+
+            // Concatenate address fields into domicilio
+            const domicilio = `${formData.calle} ${formData.numero}${formData.referencia ? ', ' + formData.referencia : ''}`.trim();
+
+            // Prepare the image files for upload
+            const selfieFile = {
+                uri: formData.selfie,
+                type: 'image/jpeg',
+                name: 'selfie.jpg',
+            };
+
+            const ineFile = {
+                uri: formData.ine,
+                type: 'image/jpeg',
+                name: 'ine.jpg',
+            };
+
+            // Call the API to register the user
+            const response = await API.users.register({
+                name: formData.name,
+                email: formData.email,
+                password: formData.password,
+                role: [{ type: 'user' }], // Default role
+                colony: formData.colonia,
+                domicilio: domicilio, // Concatenated address
+                selfie: selfieFile as any,
+                ine: ineFile as any,
+            });
+
+            if (response.success) {
+                Alert.alert(
+                    '¡Registro exitoso!',
+                    'Tu cuenta ha sido creada. Ahora puedes iniciar sesión.',
+                    [
+                        {
+                            text: 'OK',
+                            onPress: () => {
+                                router.replace('/(auth)/login' as any);
+                            },
+                        },
+                    ]
+                );
+            } else {
+                throw new Error(response.message || 'Error al registrar usuario');
+            }
+        } catch (error: any) {
+            console.error('Registration error:', error);
+            setFormError(error.message || 'Error al crear la cuenta. Intenta nuevamente.');
+            Alert.alert('Error', error.message || 'No se pudo completar el registro');
+        } finally {
+            setIsLoading(false);
+        }
     }
 
     const dialogueTexts = useMemo(() => [
@@ -93,11 +202,14 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
     const formFields = useMemo(() => [
         { key: 'name', type: 'input', placeholder: 'Nombre Completo', title: '¡Comencemos con tu nombre!' },
         { key: 'email', type: 'input', placeholder: 'Correo Electrónico', title: 'Ahora, tu email...', keyboardType: 'email-address' },
-        { key: 'password', type: 'input', placeholder: 'Contraseña Segura.', title: 'Crea una contraseña.', secureTextEntry: true },
+        { key: 'password', type: 'input', placeholder: 'Contraseña Segura (mín. 6 caracteres)', title: 'Crea una contraseña.', secureTextEntry: true },
         { key: 'selfie', type: 'photo', title: 'Toma una foto de tu rostro' },
         { key: 'ine', type: 'photo', title: 'Toma una foto de tu INE (frente)' },
-        { key: 'postal', type: 'input', placeholder: 'Código postal', title: '¿Cuál es tu código postal?', keyboardType: 'numeric' },
+        { key: 'postal', type: 'input', placeholder: 'Código postal (5 dígitos)', title: '¿Cuál es tu código postal?', keyboardType: 'numeric' },
         { key: 'colonia', type: 'select', title: 'Selecciona tu colonia' },
+        { key: 'calle', type: 'input', placeholder: 'Nombre de la calle', title: '¿Cuál es el nombre de tu calle?' },
+        { key: 'numero', type: 'input', placeholder: 'Número exterior/interior', title: '¿Cuál es el número de tu domicilio?' },
+        { key: 'referencia', type: 'input', placeholder: 'Referencias (opcional)', title: '¿Alguna referencia para ubicar tu domicilio?', multiline: true, optional: true },
     ], []);
 
     const isLastDialogueStep = step === DIALOGUE_STEP_COUNT - 1;
@@ -107,36 +219,64 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
     const isLastFormStep = step === DIALOGUE_STEP_COUNT + REGISTER_FIELD_COUNT;
 
     const handleNext = async () => {
-            setFormError('');
-            const MAX_STEP = DIALOGUE_STEP_COUNT + REGISTER_FIELD_COUNT;
-            if (step < DIALOGUE_STEP_COUNT) {
-                setStep(s => Math.min(s + 1, MAX_STEP));
+        setFormError('');
+        const MAX_STEP = DIALOGUE_STEP_COUNT + REGISTER_FIELD_COUNT;
+        
+        // Dialogue steps
+        if (step < DIALOGUE_STEP_COUNT) {
+            setStep(s => Math.min(s + 1, MAX_STEP));
+            return;
+        }
+        
+        // Motivation step
+        if (isMotivationStep) {
+            if (!selectedMotivation) {
+                setFormError('Por favor, selecciona una opción para continuar.');
                 return;
             }
-            if (isMotivationStep) {
-                if (!selectedMotivation) {
-                    setFormError('Por favor, selecciona una opción para continuar.');
-                    return;
-                }
-                setStep(s => Math.min(s + 1, MAX_STEP));
-                return;
-            }
+            setStep(s => Math.min(s + 1, MAX_STEP));
+            return;
+        }
+        
+        // Form steps
         if (isFormStep) {
-            if (!currentFormField) return; // safety
+            if (!currentFormField) return;
             const key = currentFormField.key as keyof typeof formData;
 
             if (currentFormField.type === 'input') {
                 const val = (formData as any)[key];
-                if (!val) {
+                // Allow empty values for optional fields
+                const isOptional = (currentFormField as any).optional;
+                if (!isOptional && (!val || val.trim().length === 0)) {
                     setFormError('Por favor, ingresa tu respuesta.');
                     return;
                 }
 
+                // Validate password length
+                if (key === 'password' && val.length < 6) {
+                    setFormError('La contraseña debe tener al menos 6 caracteres.');
+                    return;
+                }
+
+                // Validate email format
+                if (key === 'email') {
+                    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                    if (!emailRegex.test(val)) {
+                        setFormError('Por favor ingresa un email válido.');
+                        return;
+                    }
+                }
+
                 // If postal code, fetch colonias before moving on
                 if (key === 'postal') {
+                    if (val.length !== 5) {
+                        setFormError('El código postal debe tener 5 dígitos.');
+                        return;
+                    }
+                    
                     const cols = await fetchColonias(val as string);
                     if (!cols || cols.length === 0) {
-                        setFormError('No se encontraron colonias para ese código postal');
+                        setFormError('No se encontraron colonias para ese código postal.');
                         return;
                     }
                     setColonias(cols);
@@ -170,9 +310,9 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
             return;
         }
 
+        // Last step - register user
         if (isLastFormStep) {
-            console.log('Registro Finalizado:', { ...formData, motivation: selectedMotivation });
-            onBackToStart();
+            await registerUser();
         }
     };
 
@@ -296,13 +436,21 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
     }
 
     if (isFormStep || isLastFormStep) {
-    const inputKey = (isFormStep && currentFormField ? currentFormField.key : 'password') as keyof typeof formData;
+        const inputKey = (isFormStep && currentFormField ? currentFormField.key : 'password') as keyof typeof formData;
         const nextButtonText = isLastFormStep ? 'CREAR CUENTA' : 'CONTINUAR';
 
         // compute validity depending on field type
         const fieldType = currentFormField?.type ?? 'input';
         const rawValue = (formData as any)[inputKey];
-        const isInputValid = fieldType === 'photo' ? !!rawValue : (typeof rawValue === 'string' ? rawValue.trim().length > 0 : !!rawValue);
+        
+        let isInputValid = false;
+        if (fieldType === 'photo') {
+            isInputValid = !!rawValue;
+        } else if (typeof rawValue === 'string') {
+            isInputValid = rawValue.trim().length > 0;
+        } else {
+            isInputValid = !!rawValue;
+        }
 
         return (
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: WHITE }}>
@@ -328,21 +476,33 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
                             {isFormStep && currentFormField ? currentFormField.title : '¡Listo para crear tu cuenta!'}
                         </Text>
                         {isFormStep && currentFormField && (
-                            <Animated.View entering={FadeIn.delay(200)} exiting={FadeOut}>
+                            <Animated.View entering={FadeIn.delay(200)} exiting={FadeOut} style={{ width: '100%' }}>
                                 {currentFormField.type === 'input' && (
                                     <TextInput
                                         placeholder={currentFormField.placeholder}
                                         value={String((formData as any)[inputKey] ?? '')}
-                                        onChangeText={(text) => setFormData(prev => ({ ...prev, [inputKey]: text }))}
-                                        style={styles.input}
+                                        onChangeText={(text) => {
+                                            setFormData(prev => ({ ...prev, [inputKey]: text }));
+                                            setFormError('');
+                                        }}
+                                        style={[
+                                            styles.input,
+                                            (currentFormField as any).multiline && styles.inputMultiline
+                                        ]}
                                         keyboardType={(currentFormField.keyboardType as any) || 'default'}
                                         secureTextEntry={(currentFormField.secureTextEntry as any) || false}
                                         autoFocus={true}
+                                        multiline={(currentFormField as any).multiline || false}
+                                        numberOfLines={(currentFormField as any).multiline ? 3 : 1}
+                                        editable={!isLoading}
                                     />
                                 )}
 
                                 {currentFormField.type === 'photo' && (
-                                    <PhotoCapture uri={(formData as any)[inputKey]} onTake={() => pickPhotoFor(inputKey as any)} />
+                                    <PhotoCapture 
+                                        uri={(formData as any)[inputKey]} 
+                                        onTake={() => pickPhotoFor(inputKey as any)} 
+                                    />
                                 )}
 
                                 {currentFormField.type === 'select' && (
@@ -351,28 +511,61 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
                                             style={styles.dropdownButton}
                                             onPress={() => setShowColoniaPicker(true)}
                                             activeOpacity={0.8}
+                                            disabled={isLoading || colonias.length === 0}
                                         >
-                                            <Text style={styles.dropdownText}>{(formData as any).colonia || 'Selecciona tu colonia'}</Text>
+                                            <Text style={styles.dropdownText}>
+                                                {(formData as any).colonia || 'Selecciona tu colonia'}
+                                            </Text>
                                         </TouchableOpacity>
 
-                                        <ColoniaPicker visible={showColoniaPicker} colonias={colonias} selected={(formData as any).colonia} onSelect={(col) => { setFormData(prev => ({ ...prev, colonia: col })); setFormError(''); setShowColoniaPicker(false); }} onClose={() => setShowColoniaPicker(false)} />
+                                        <ColoniaPicker 
+                                            visible={showColoniaPicker} 
+                                            colonias={colonias} 
+                                            selected={(formData as any).colonia} 
+                                            onSelect={(col) => { 
+                                                setFormData(prev => ({ ...prev, colonia: col })); 
+                                                setFormError(''); 
+                                                setShowColoniaPicker(false); 
+                                            }} 
+                                            onClose={() => setShowColoniaPicker(false)} 
+                                        />
                                     </View>
                                 )}
                             </Animated.View>
                         )}
                         {formError ? <Text style={styles.errorText}>{formError}</Text> : null}
 
+                        {/* Show loading indicator */}
+                        {isLoading && (
+                            <View style={styles.loadingContainer}>
+                                <ActivityIndicator size="large" color={RED} />
+                                <Text style={styles.loadingText}>
+                                    {isLastFormStep ? 'Creando tu cuenta...' : 'Cargando...'}
+                                </Text>
+                            </View>
+                        )}
+
                         {/* Allow user to connect Banorte via Open Banking on the last step */}
-                        {isLastFormStep && (
+                        {isLastFormStep && !isLoading && (
                             <View style={styles.bankSection}>
-                                <Text style={styles.bankDesc}>Conecta con Banorte (banca abierta) para importar automáticamente tus datos financieros y agilizar el proceso.</Text>
+                                <Text style={styles.bankDesc}>
+                                    Conecta con Banorte (banca abierta) para importar automáticamente tus datos financieros y agilizar el proceso.
+                                </Text>
                                 <TouchableOpacity
-                                    style={[styles.bankButton, (formData as any).allowOpenBanking && styles.bankButtonConnected]}
-                                    onPress={() => setFormData(prev => ({ ...prev, allowOpenBanking: !(prev as any).allowOpenBanking }))}
+                                    style={[
+                                        styles.bankButton, 
+                                        (formData as any).allowOpenBanking && styles.bankButtonConnected
+                                    ]}
+                                    onPress={() => setFormData(prev => ({ 
+                                        ...prev, 
+                                        allowOpenBanking: !(prev as any).allowOpenBanking 
+                                    }))}
                                     activeOpacity={0.85}
                                 >
                                     {((formData as any).allowOpenBanking) ? (
-                                        <Text style={[styles.bankButtonText, styles.bankButtonTextConnected]}>Conectado ✓</Text>
+                                        <Text style={[styles.bankButtonText, styles.bankButtonTextConnected]}>
+                                            Conectado ✓
+                                        </Text>
                                     ) : (
                                         <Text style={styles.bankButtonText}>Conectar con Banorte</Text>
                                     )}
@@ -381,19 +574,23 @@ export default function RegistrationFlow({ onBackToStart }: { onBackToStart: () 
                         )}
 
                         {/* CTA directly below the input/question */}
-                        <View style={onboardingStyles.ctaInline}>
-                            <TouchableOpacity 
-                                style={[
-                                    styles.button, 
-                                    isInputValid ? styles.primaryGreen : styles.disabled
-                                ]} 
-                                onPress={handleNext}
-                                disabled={!isInputValid}
-                                activeOpacity={0.8}
-                            >
-                                <Text style={[styles.buttonText, styles.primaryGreenText]}>{nextButtonText}</Text>
-                            </TouchableOpacity>
-                        </View>
+                        {!isLoading && (
+                            <View style={onboardingStyles.ctaInline}>
+                                <TouchableOpacity 
+                                    style={[
+                                        styles.button, 
+                                        isInputValid ? styles.primaryGreen : styles.disabled
+                                    ]} 
+                                    onPress={handleNext}
+                                    disabled={!isInputValid || isLoading}
+                                    activeOpacity={0.8}
+                                >
+                                    <Text style={[styles.buttonText, styles.primaryGreenText]}>
+                                        {nextButtonText}
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+                        )}
                     </View>
 
                 </ScrollView>
@@ -501,6 +698,21 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.06,
         shadowRadius: 4,
         elevation: 2,
+    },
+    inputMultiline: {
+        minHeight: 80,
+        textAlignVertical: 'top',
+        paddingTop: 14,
+    },
+    loadingContainer: {
+        paddingVertical: 20,
+        alignItems: 'center',
+        gap: 12,
+    },
+    loadingText: {
+        color: GRAY,
+        fontSize: 14,
+        fontWeight: '600',
     },
     buttonText: {
         fontSize: 16,

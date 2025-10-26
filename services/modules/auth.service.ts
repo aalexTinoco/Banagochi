@@ -2,16 +2,17 @@
  * Authentication Service
  */
 
-import { HttpClient } from '../utils/http-client';
 import { API_CONFIG, API_ENDPOINTS } from '../config/api.config';
 import type {
-  LoginRequest,
-  LoginWithBiometricRequest,
-  LoginResponse,
-  ForgotPasswordRequest,
-  ResetPasswordRequest,
-  TokenTimeResponse,
+    ForgotPasswordRequest,
+    LoginRequest,
+    LoginResponse,
+    LoginWithBiometricRequest,
+    ResetPasswordRequest,
+    TokenTimeResponse,
 } from '../types';
+import { HttpClient } from '../utils/http-client';
+import { StorageService } from '../utils/storage';
 
 export class AuthService {
   private static baseUrl = API_CONFIG.USERS_BASE_URL;
@@ -25,9 +26,21 @@ export class AuthService {
       data
     );
 
-    // Store token if login successful
+    // Store token and user data if login successful
     if (response.success && response.token) {
       HttpClient.setAuthToken(response.token);
+      
+      if (response.user) {
+        StorageService.setUserData({
+          _id: response.user.id,
+          name: response.user.name,
+          email: response.user.email,
+          role: response.user.role,
+          devices: [],
+          creationDate: new Date(),
+          status: true,
+        });
+      }
     }
 
     return response;
@@ -82,9 +95,21 @@ export class AuthService {
       formData
     );
 
-    // Store token if login successful
+    // Store token and user data if login successful
     if (response.success && response.token) {
       HttpClient.setAuthToken(response.token);
+      
+      if (response.user) {
+        StorageService.setUserData({
+          _id: response.user.id,
+          name: response.user.name,
+          email: response.user.email,
+          role: response.user.role,
+          devices: [],
+          creationDate: new Date(),
+          status: true,
+        });
+      }
     }
 
     return response;
@@ -130,10 +155,19 @@ export class AuthService {
   }
 
   /**
-   * Logout (clear local token)
+   * Logout (clear local token and user data)
    */
   static logout(): void {
     HttpClient.setAuthToken(null);
+    StorageService.clearUserData();
+  }
+
+  /**
+   * Clear all authentication data
+   */
+  static clearAuth(): void {
+    HttpClient.setAuthToken(null);
+    StorageService.clearAll();
   }
 
   /**
@@ -148,5 +182,12 @@ export class AuthService {
    */
   static getToken(): string | null {
     return HttpClient.getAuthToken();
+  }
+
+  /**
+   * Check if user is authenticated
+   */
+  static isAuthenticated(): boolean {
+    return !!HttpClient.getAuthToken();
   }
 }
